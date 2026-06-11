@@ -1,0 +1,262 @@
+import {
+  AlertCircle,
+  Anchor,
+  Camera,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  RotateCcw,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { technicians } from "../data";
+import { saveSelfie } from "../lib/storage";
+import type { AuthUser, Role, SelfieRecord } from "../types";
+
+interface LoginProps {
+  onLogin: (user: AuthUser) => void;
+}
+
+type LoginRole = Role | null;
+
+const managerCredentials = {
+  admin: { username: "admin", password: "Muniz@2026", name: "Administrador" },
+  supervisor: {
+    username: "Coordenador",
+    password: "Martins@2026",
+    name: "Coordenador",
+  },
+} as const;
+
+export function Login({ onLogin }: LoginProps) {
+  const [role, setRole] = useState<LoginRole>(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [technician, setTechnician] = useState("");
+  const [photo, setPhoto] = useState("");
+  const [cameraActive, setCameraActive] = useState(false);
+  const [error, setError] = useState("");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    return () => stopCamera();
+  }, []);
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+  }
+
+  function chooseRole(nextRole: Role) {
+    stopCamera();
+    setRole(nextRole);
+    setError("");
+    setPhoto("");
+    setUsername(nextRole === "admin" ? "admin" : nextRole === "supervisor" ? "Coordenador" : "");
+    setPassword("");
+  }
+
+  async function startCamera() {
+    setError("");
+    if (!technician) {
+      setError("Selecione seu nome antes de abrir a camera.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("A camera nao esta disponivel neste navegador.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCameraActive(true);
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          void videoRef.current.play();
+        }
+      });
+    } catch {
+      setError("Nao foi possivel acessar a camera. Autorize o uso e tente novamente.");
+    }
+  }
+
+  function capturePhoto() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) {
+      setError("A camera ainda esta carregando. Aguarde um instante.");
+      return;
+    }
+    const size = Math.min(video.videoWidth, video.videoHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = 520;
+    canvas.height = 520;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const sourceX = (video.videoWidth - size) / 2;
+    const sourceY = (video.videoHeight - size) / 2;
+    context.drawImage(video, sourceX, sourceY, size, size, 0, 0, 520, 520);
+    setPhoto(canvas.toDataURL("image/jpeg", 0.78));
+    stopCamera();
+  }
+
+  function submitManager(event: React.FormEvent) {
+    event.preventDefault();
+    if (role !== "admin" && role !== "supervisor") return;
+    const expected = managerCredentials[role];
+    if (username !== expected.username || password !== expected.password) {
+      setError("Usuario ou senha incorretos.");
+      return;
+    }
+    onLogin({ role, name: expected.name, username });
+  }
+
+  function submitCollaborator(event: React.FormEvent) {
+    event.preventDefault();
+    if (!technician || !photo) {
+      setError("Selecione seu nome e registre uma selfie para continuar.");
+      return;
+    }
+    const selfie: SelfieRecord = {
+      id: `SELFIE-${Date.now()}`,
+      technician,
+      imageData: photo,
+      capturedAt: new Date().toISOString(),
+    };
+    saveSelfie(selfie);
+    onLogin({
+      role: "colaborador",
+      name: technician,
+      selfieSessionId: selfie.id,
+    });
+  }
+
+  return (
+    <main className="login-page">
+      <section className="login-visual">
+        <div className="login-brand">
+          <span><Anchor size={29} /></span>
+          <div><strong>Diarias TST</strong><small>Controle operacional</small></div>
+        </div>
+        <div className="login-message">
+          <span className="eyebrow light">CONTROLE SEGURO E SIMPLES</span>
+          <h1>Registre sua jornada com confianca.</h1>
+          <p>Uma plataforma unica para tecnicos, supervisores e administradores.</p>
+        </div>
+        <div className="login-security"><ShieldCheck size={19} /> Acesso protegido e registros auditaveis</div>
+      </section>
+
+      <section className="login-content">
+        <div className="login-box">
+          {!role ? (
+            <>
+              <span className="eyebrow">BEM-VINDO</span>
+              <h2>Como voce deseja entrar?</h2>
+              <p>Selecione seu perfil de acesso para continuar.</p>
+              <div className="role-options">
+                <button onClick={() => chooseRole("colaborador")}>
+                  <span><Camera size={22} /></span>
+                  <div><strong>Colaborador</strong><small>Selecionar nome e registrar selfie</small></div>
+                </button>
+                <button onClick={() => chooseRole("supervisor")}>
+                  <span><UserRound size={22} /></span>
+                  <div><strong>Supervisor</strong><small>Acompanhar equipe e aprovar edicoes</small></div>
+                </button>
+                <button onClick={() => chooseRole("admin")}>
+                  <span><LockKeyhole size={22} /></span>
+                  <div><strong>Administrador</strong><small>Gerenciar sistema e auditoria</small></div>
+                </button>
+              </div>
+            </>
+          ) : role === "colaborador" ? (
+            <form onSubmit={submitCollaborator}>
+              <button type="button" className="login-back" onClick={() => { stopCamera(); setRole(null); setError(""); }}>
+                Trocar perfil
+              </button>
+              <span className="eyebrow">ACESSO DO COLABORADOR</span>
+              <h2>Identifique-se</h2>
+              <p>Selecione seu nome e tire uma foto para registrar este acesso.</p>
+              <label className="field login-field">
+                <span>Quem esta acessando? <b>*</b></span>
+                <select value={technician} onChange={(event) => { setTechnician(event.target.value); setPhoto(""); }}>
+                  <option value="">Selecione seu nome</option>
+                  {technicians.map((name) => <option key={name}>{name}</option>)}
+                </select>
+              </label>
+
+              <div className="camera-card">
+                {photo ? (
+                  <div className="photo-preview">
+                    <img src={photo} alt={`Selfie de ${technician}`} />
+                    <span><CheckCircle2 size={18} /> Foto registrada</span>
+                  </div>
+                ) : cameraActive ? (
+                  <div className="camera-preview">
+                    <video ref={videoRef} muted playsInline />
+                    <div className="face-guide" />
+                  </div>
+                ) : (
+                  <div className="camera-placeholder">
+                    <span><Camera size={30} /></span>
+                    <strong>Registro por selfie</strong>
+                    <small>A foto sera visivel apenas para o administrador.</small>
+                  </div>
+                )}
+                <div className="camera-actions">
+                  {photo ? (
+                    <button type="button" className="button button-secondary" onClick={() => setPhoto("")}>
+                      <RotateCcw size={17} /> Tirar outra
+                    </button>
+                  ) : cameraActive ? (
+                    <button type="button" className="button button-primary" onClick={capturePhoto}>
+                      <Camera size={17} /> Capturar foto
+                    </button>
+                  ) : (
+                    <button type="button" className="button button-secondary" onClick={startCamera}>
+                      <Camera size={17} /> Abrir camera
+                    </button>
+                  )}
+                </div>
+              </div>
+              {error && <div className="login-error"><AlertCircle size={17} /> {error}</div>}
+              <button className="button button-primary login-submit" disabled={!technician || !photo}>
+                Entrar na plataforma
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={submitManager}>
+              <button type="button" className="login-back" onClick={() => setRole(null)}>Trocar perfil</button>
+              <span className="eyebrow">{role === "admin" ? "ACESSO ADMINISTRATIVO" : "ACESSO DA SUPERVISAO"}</span>
+              <h2>Entre com suas credenciais</h2>
+              <p>Informe o usuario e a senha definidos para este perfil.</p>
+              <label className="field login-field">
+                <span>Usuario</span>
+                <div className="input-with-icon"><UserRound size={18} /><input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></div>
+              </label>
+              <label className="field login-field">
+                <span>Senha</span>
+                <div className="input-with-icon">
+                  <LockKeyhole size={18} />
+                  <input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+                  <button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
+                    {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                  </button>
+                </div>
+              </label>
+              {error && <div className="login-error"><AlertCircle size={17} /> {error}</div>}
+              <button className="button button-primary login-submit">Entrar na plataforma</button>
+            </form>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
