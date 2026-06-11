@@ -1,6 +1,6 @@
-import type { DiaryRecord, EditRequest } from "./types";
+import type { DiaryRecord, EditRequest, SystemSettings } from "./types";
 
-export const technicians = [
+export const initialTechnicians = [
   "Arthur Muller",
   "Bruno Lima Cardoso de Oliveira",
   "Caio Guerreiro de Oliveira",
@@ -40,7 +40,7 @@ export const technicians = [
   "Victor da Silva Souza",
 ];
 
-export const vessels = [
+export const initialVessels = [
   "HOSS BRASS RING",
   "SIEM PILOT",
   "SKANDI AMAZONAS",
@@ -82,7 +82,7 @@ export const demoRecords: DiaryRecord[] = [
       },
     ],
     notes: "Dobra autorizada pela supervisao.",
-    status: "Edicao solicitada",
+    status: "Solicitacao enviada",
     createdAt: "2026-06-10T19:35:00",
   },
   {
@@ -109,8 +109,47 @@ export const demoRequests: EditRequest[] = [
     technician: "Leandro da Silva da Costa",
     date: "2026-06-10",
     reason: "Embarcacao informada incorretamente no segundo turno.",
-    requestedChange: "Alterar SKANDI CARLA para SKANDI COMMANDER.",
+    originalRecord: demoRecords[1],
+    proposedRecord: {
+      ...demoRecords[1],
+      turns: [
+        demoRecords[1].turns[0],
+        { ...demoRecords[1].turns[1], vessels: ["SKANDI COMMANDER"] },
+      ],
+    },
     status: "Pendente",
     createdAt: "2026-06-11T09:10:00",
   },
 ];
+
+export const defaultSettings: SystemSettings = {
+  technicians: initialTechnicians,
+  vessels: initialVessels,
+  accessAccounts: [
+    {
+      id: "access-admin",
+      role: "admin",
+      name: "Administrador",
+      username: "admin",
+      password: "Muniz@2026",
+      active: true,
+    },
+    {
+      id: "access-supervisor",
+      role: "supervisor",
+      name: "Coordenador",
+      username: "Coordenador",
+      password: "Martins@2026",
+      active: true,
+    },
+    {
+      id: "access-financeiro",
+      role: "financeiro",
+      name: "Financeiro",
+      username: "Financeiro",
+      password: "Sea@2026@",
+      active: true,
+    },
+  ],
+  allowSelfieDeletion: false,
+};

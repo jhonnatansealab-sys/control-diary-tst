@@ -1,6 +1,6 @@
 create extension if not exists "pgcrypto";
 
-create type public.user_role as enum ('colaborador', 'supervisor', 'admin');
+create type public.user_role as enum ('colaborador', 'supervisor', 'financeiro', 'admin');
 create type public.shift_type as enum ('Diurno', 'Noturno');
 create type public.activity_type as enum ('Area', 'ADM');
 create type public.request_status as enum ('Pendente', 'Aprovada', 'Rejeitada');
@@ -50,11 +50,19 @@ create table public.edit_requests (
   diary_record_id uuid not null references public.diary_records(id),
   requested_by uuid not null references public.profiles(id),
   reason text not null,
-  requested_change text not null,
+  original_record jsonb not null,
+  proposed_record jsonb not null,
   status public.request_status not null default 'Pendente',
   reviewed_by uuid references public.profiles(id),
   reviewed_at timestamptz,
   created_at timestamptz not null default now()
+);
+
+create table public.system_settings (
+  id boolean primary key default true check (id),
+  allow_selfie_deletion boolean not null default false,
+  updated_at timestamptz not null default now(),
+  updated_by uuid references public.profiles(id)
 );
 
 create table public.audit_log (
@@ -87,6 +95,7 @@ alter table public.diary_turn_vessels enable row level security;
 alter table public.edit_requests enable row level security;
 alter table public.audit_log enable row level security;
 alter table public.access_selfies enable row level security;
+alter table public.system_settings enable row level security;
 
 create function public.current_user_role()
 returns public.user_role
@@ -108,7 +117,7 @@ create policy "users read own profile and managers read all"
   to authenticated
   using (
     id = auth.uid()
-    or public.current_user_role() in ('supervisor', 'admin')
+    or public.current_user_role() in ('supervisor', 'financeiro', 'admin')
   );
 
 create policy "users read own records and managers read all"
@@ -116,7 +125,7 @@ create policy "users read own records and managers read all"
   to authenticated
   using (
     technician_id = auth.uid()
-    or public.current_user_role() in ('supervisor', 'admin')
+    or public.current_user_role() in ('supervisor', 'financeiro', 'admin')
   );
 
 create policy "users create own records and managers create any"
@@ -136,7 +145,7 @@ create policy "turns follow record visibility"
       where record.id = diary_record_id
         and (
           record.technician_id = auth.uid()
-          or public.current_user_role() in ('supervisor', 'admin')
+          or public.current_user_role() in ('supervisor', 'financeiro', 'admin')
         )
     )
   );
@@ -166,7 +175,7 @@ create policy "turn vessels follow record visibility"
       where turn_entry.id = diary_turn_id
         and (
           record.technician_id = auth.uid()
-          or public.current_user_role() in ('supervisor', 'admin')
+          or public.current_user_role() in ('supervisor', 'financeiro', 'admin')
         )
     )
   );
@@ -242,6 +251,20 @@ create policy "only admins view access selfies"
     bucket_id = 'access-selfies'
     and public.current_user_role() = 'admin'
   );
+
+create policy "authenticated users read system settings"
+  on public.system_settings for select
+  to authenticated
+  using (true);
+
+create policy "only admins update system settings"
+  on public.system_settings for all
+  to authenticated
+  using (public.current_user_role() = 'admin')
+  with check (public.current_user_role() = 'admin');
+
+insert into public.system_settings (id) values (true)
+on conflict (id) do nothing;
 
 insert into public.vessels (name) values
   ('HOSS BRASS RING'),

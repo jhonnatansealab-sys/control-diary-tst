@@ -1,7 +1,7 @@
-export type Role = "colaborador" | "supervisor" | "admin";
+export type Role = "colaborador" | "supervisor" | "financeiro" | "admin";
 export type Shift = "Diurno" | "Noturno";
 export type Activity = "Area" | "ADM";
-export type RecordStatus = "Registrado" | "Edicao solicitada" | "Corrigido";
+export type RecordStatus = "Registrado" | "Solicitacao enviada" | "Corrigido";
 export type RequestStatus = "Pendente" | "Aprovada" | "Rejeitada";
 
 export interface AuthUser {
@@ -16,6 +16,22 @@ export interface SelfieRecord {
   technician: string;
   imageData: string;
   capturedAt: string;
+}
+
+export interface AccessAccount {
+  id: string;
+  role: Exclude<Role, "colaborador">;
+  name: string;
+  username: string;
+  password: string;
+  active: boolean;
+}
+
+export interface SystemSettings {
+  technicians: string[];
+  vessels: string[];
+  accessAccounts: AccessAccount[];
+  allowSelfieDeletion: boolean;
 }
 
 export interface TurnEntry {
@@ -41,7 +57,8 @@ export interface EditRequest {
   technician: string;
   date: string;
   reason: string;
-  requestedChange: string;
+  originalRecord: DiaryRecord;
+  proposedRecord: DiaryRecord;
   status: RequestStatus;
   createdAt: string;
 }

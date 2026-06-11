@@ -2,11 +2,11 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Moon, Save, Sun } from "lucide-re
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { VesselSelect } from "../components/VesselSelect";
-import { technicians } from "../data";
-import type { Activity, AuthUser, DiaryRecord, Shift, TurnEntry } from "../types";
+import type { Activity, AuthUser, DiaryRecord, Shift, SystemSettings, TurnEntry } from "../types";
 
 interface NewDiaryProps {
   user: AuthUser;
+  settings: SystemSettings;
   onSave: (record: DiaryRecord) => void;
 }
 
@@ -19,11 +19,11 @@ function localDate() {
 
 const emptyTurn: TurnEntry = { shift: "Diurno", activity: "Area", vessels: [] };
 
-export function NewDiary({ user, onSave }: NewDiaryProps) {
+export function NewDiary({ user, settings, onSave }: NewDiaryProps) {
   const navigate = useNavigate();
   const [date, setDate] = useState(localDate());
   const [technician, setTechnician] = useState(
-    user.role === "colaborador" ? user.name : technicians[0],
+    user.role === "colaborador" ? user.name : settings.technicians[0],
   );
   const [firstTurn, setFirstTurn] = useState<TurnEntry>(emptyTurn);
   const [hasDouble, setHasDouble] = useState(false);
@@ -49,7 +49,7 @@ export function NewDiary({ user, onSave }: NewDiaryProps) {
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!firstTurn.vessels.length || (hasDouble && !secondTurn.vessels.length)) {
-      setError("Informe ao menos uma embarcacao para cada turno.");
+      setError("Informe uma embarcação para cada turno.");
       return;
     }
 
@@ -97,7 +97,7 @@ export function NewDiary({ user, onSave }: NewDiaryProps) {
                 onChange={(event) => setTechnician(event.target.value)}
                 disabled={user.role === "colaborador"}
               >
-                {technicians.map((name) => <option key={name}>{name}</option>)}
+                {settings.technicians.map((name) => <option key={name}>{name}</option>)}
               </select>
               {user.role === "colaborador" && <small>Identificado automaticamente pelo seu acesso.</small>}
             </label>
@@ -109,6 +109,7 @@ export function NewDiary({ user, onSave }: NewDiaryProps) {
           title="Primeiro turno"
           turn={firstTurn}
           onChange={updateFirst}
+          vessels={settings.vessels}
         />
 
         <section className="double-toggle-card">
@@ -143,6 +144,7 @@ export function NewDiary({ user, onSave }: NewDiaryProps) {
               turn={secondTurn}
               onChange={(patch) => setSecondTurn((current) => ({ ...current, ...patch }))}
               lockShift
+              vessels={settings.vessels}
             />
           </>
         )}
@@ -187,9 +189,10 @@ interface TurnCardProps {
   turn: TurnEntry;
   onChange: (patch: Partial<TurnEntry>) => void;
   lockShift?: boolean;
+  vessels: string[];
 }
 
-function TurnCard({ number, title, subtitle, turn, onChange, lockShift }: TurnCardProps) {
+function TurnCard({ number, title, subtitle, turn, onChange, lockShift, vessels }: TurnCardProps) {
   return (
     <section className="form-card">
       <div className="form-card-header">
@@ -230,13 +233,15 @@ function TurnCard({ number, title, subtitle, turn, onChange, lockShift }: TurnCa
           </div>
         </fieldset>
         <label className="field full-width">
-          <span>Embarcacao <b>*</b></span>
+          <span>Embarcação <b>*</b></span>
           <VesselSelect
             id={`vessels-turn-${number}`}
             value={turn.vessels}
             onChange={(vessels) => onChange({ vessels })}
+            options={vessels}
+            single
           />
-          <small>Selecione todas as embarcacoes atendidas neste turno.</small>
+          <small>Selecione a embarcação atendida neste turno.</small>
         </label>
       </div>
     </section>
