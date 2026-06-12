@@ -72,7 +72,7 @@ export function Records({ user, records, settings, onRequest }: RecordsProps) {
           technician: record.technician,
           shift: turn.shift,
           activity: turn.activity,
-          vessel: turn.vessels[0] ?? "",
+          vessel: turn.vessels.join(", "),
           double: record.turns.length === 2 ? "Sim" : "Não",
           notes: record.notes,
           status: record.status,
@@ -142,8 +142,8 @@ export function Records({ user, records, settings, onRequest }: RecordsProps) {
                   <td>{record.turns.map((turn) => <span className="journey-line" key={turn.shift}><b>{turn.shift}</b> · {turn.activity}</span>)}</td>
                   <td>
                     <div className="turn-vessels">
-                      {record.turns.map((turn) => (
-                        <span key={turn.shift}><Ship size={14} /><b>{turn.shift}</b><em>{turn.vessels[0]}</em></span>
+                      {record.turns.map((turn, index) => (
+                        <span key={`${turn.shift}-${index}`}><Ship size={14} /><b>{turn.shift}</b><em>{turn.vessels.join(", ")}</em></span>
                       ))}
                     </div>
                   </td>

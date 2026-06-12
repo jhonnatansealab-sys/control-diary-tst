@@ -1,20 +1,32 @@
 import { Camera, Plus, Ship, Trash2, UserCog, Users } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { deleteRemoteSelfie, fetchRemoteSelfies } from "../lib/api";
 import { loadSelfies, saveSelfies } from "../lib/storage";
-import type { AccessAccount, Role, SelfieRecord, SystemSettings } from "../types";
+import { isDemoMode } from "../lib/supabase";
+import type { AccessAccount, AuthUser, Role, SelfieRecord, SystemSettings } from "../types";
 
 interface AdminProps {
+  user: AuthUser;
   settings: SystemSettings;
-  onSettingsChange: (settings: SystemSettings) => void;
+  onSettingsChange: (settings: SystemSettings) => void | Promise<void>;
 }
 
 type AdminSection = "technicians" | "vessels" | "access";
 
-export function Admin({ settings, onSettingsChange }: AdminProps) {
+export function Admin({ user, settings, onSettingsChange }: AdminProps) {
   const [section, setSection] = useState<AdminSection>("technicians");
   const [newItem, setNewItem] = useState("");
   const [selfies, setSelfies] = useState<SelfieRecord[]>(loadSelfies);
   const [account, setAccount] = useState({ name: "", username: "", password: "", role: "supervisor" as Exclude<Role, "colaborador"> });
+  const [selfieError, setSelfieError] = useState("");
+  const isSystemAdmin = user.role === "admin";
+
+  useEffect(() => {
+    if (isDemoMode || !isSystemAdmin) return;
+    fetchRemoteSelfies(user)
+      .then(({ selfies: remoteSelfies }) => setSelfies(remoteSelfies))
+      .catch((error: Error) => setSelfieError(error.message));
+  }, [isSystemAdmin, user]);
 
   function addCatalogItem() {
     const value = newItem.trim();
@@ -42,11 +54,19 @@ export function Admin({ settings, onSettingsChange }: AdminProps) {
     setAccount({ name: "", username: "", password: "", role: "supervisor" });
   }
 
-  function deleteSelfie(id: string) {
+  async function deleteSelfie(id: string) {
     if (!settings.allowSelfieDeletion) return;
+    if (!isDemoMode) {
+      try {
+        await deleteRemoteSelfie(user, id);
+      } catch (error) {
+        setSelfieError((error as Error).message);
+        return;
+      }
+    }
     const next = selfies.filter((selfie) => selfie.id !== id);
     setSelfies(next);
-    saveSelfies(next);
+    if (isDemoMode) saveSelfies(next);
   }
 
   const catalog = section === "technicians" ? settings.technicians : settings.vessels;
@@ -56,7 +76,7 @@ export function Admin({ settings, onSettingsChange }: AdminProps) {
       <section className="page-heading">
         <span className="eyebrow">CONFIGURAÇÕES</span>
         <h1>Administração</h1>
-        <p>Gerencie pessoas, embarcações, acessos e a política das fotos.</p>
+        <p>{isSystemAdmin ? "Gerencie pessoas, embarcações, acessos e a política das fotos." : "Gerencie os técnicos e as embarcações disponíveis nos registros."}</p>
       </section>
       <section className="admin-grid">
         <button className={`admin-card ${section === "technicians" ? "selected" : ""}`} onClick={() => setSection("technicians")}>
@@ -65,9 +85,11 @@ export function Admin({ settings, onSettingsChange }: AdminProps) {
         <button className={`admin-card ${section === "vessels" ? "selected" : ""}`} onClick={() => setSection("vessels")}>
           <span className="admin-icon"><Ship size={24} /></span><div><strong>{settings.vessels.length}</strong><span>Embarcações ativas</span></div><b>Gerenciar embarcações</b>
         </button>
-        <button className={`admin-card ${section === "access" ? "selected" : ""}`} onClick={() => setSection("access")}>
-          <span className="admin-icon"><UserCog size={24} /></span><div><strong>{settings.accessAccounts.length}</strong><span>Acessos configurados</span></div><b>Gerenciar acessos</b>
-        </button>
+        {isSystemAdmin && (
+          <button className={`admin-card ${section === "access" ? "selected" : ""}`} onClick={() => setSection("access")}>
+            <span className="admin-icon"><UserCog size={24} /></span><div><strong>{settings.accessAccounts.length}</strong><span>Acessos configurados</span></div><b>Gerenciar acessos</b>
+          </button>
+        )}
       </section>
 
       <section className="panel management-panel">
@@ -106,11 +128,12 @@ export function Admin({ settings, onSettingsChange }: AdminProps) {
         )}
       </section>
 
-      <section className="panel selfie-panel">
+      {isSystemAdmin && <section className="panel selfie-panel">
         <div className="panel-header">
           <div><h2>Registro de selfies</h2><p>Fotos capturadas nos acessos dos colaboradores. Acesso exclusivo do administrador.</p></div>
           <label className="deletion-policy"><input type="checkbox" checked={settings.allowSelfieDeletion} onChange={(event) => onSettingsChange({ ...settings, allowSelfieDeletion: event.target.checked })} /><span>Permitir exclusão de fotos</span></label>
         </div>
+        {selfieError && <div className="error-banner">{selfieError}</div>}
         {selfies.length ? (
           <div className="selfie-grid">
             {selfies.map((selfie) => (
@@ -122,7 +145,7 @@ export function Admin({ settings, onSettingsChange }: AdminProps) {
             ))}
           </div>
         ) : <div className="empty-state"><Camera size={28} /><strong>Nenhuma selfie registrada</strong><span>As fotos aparecerão aqui depois do primeiro acesso de um colaborador.</span></div>}
-      </section>
+      </section>}
     </>
   );
 }
