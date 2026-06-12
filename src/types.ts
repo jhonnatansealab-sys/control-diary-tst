@@ -1,6 +1,6 @@
 export type Role = "colaborador" | "supervisor" | "financeiro" | "admin";
-export type Shift = "Diurno" | "Noturno";
-export type Activity = "Area" | "ADM";
+export type Shift = "Diurno" | "Noturno" | "Não informado";
+export type Activity = "Area" | "ADM" | "Não informado";
 export type RecordStatus = "Registrado" | "Solicitacao enviada" | "Corrigido";
 export type RequestStatus = "Pendente" | "Aprovada" | "Rejeitada";
 
