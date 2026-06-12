@@ -66,7 +66,7 @@ async function getSession(request: Request) {
   return data as { role: Role; name: string; username?: string; expires_at: string } | null;
 }
 
-async function getSettings(includeAccounts = true) {
+async function getSettings(includeAdminSettings = false) {
   const [{ data: settings, error: settingsError }, { data: accounts, error: accountsError }] =
     await Promise.all([
       supabase
@@ -74,7 +74,7 @@ async function getSettings(includeAccounts = true) {
         .select("technicians,vessels,allow_selfie_deletion")
         .eq("id", true)
         .single(),
-      includeAccounts
+      includeAdminSettings
         ? supabase
           .from("app_access_accounts")
           .select("id,role,name,username,active")
@@ -86,7 +86,7 @@ async function getSettings(includeAccounts = true) {
   return {
     technicians: settings.technicians,
     vessels: settings.vessels,
-    allowSelfieDeletion: settings.allow_selfie_deletion,
+    allowSelfieDeletion: includeAdminSettings ? settings.allow_selfie_deletion : false,
     accessAccounts: (accounts ?? []).map((account) => ({ ...account, password: "" })),
   };
 }
@@ -116,7 +116,7 @@ Deno.serve(async (request) => {
     const action = url.searchParams.get("action");
 
     if (request.method === "GET" && action === "bootstrap") {
-      return json({ settings: await getSettings() });
+      return json({ settings: await getSettings(false) });
     }
 
     if (request.method === "POST" && action === "manager-login") {
@@ -195,7 +195,7 @@ Deno.serve(async (request) => {
       return json({
         records: (records ?? []).map((item) => item.payload),
         requests: (requests ?? []).map((item) => item.payload),
-        settings: await getSettings(),
+        settings: await getSettings(session.role === "admin"),
       });
     }
 
@@ -285,47 +285,57 @@ Deno.serve(async (request) => {
     }
 
     if (request.method === "PUT" && action === "settings") {
-      await requireSession(request, ["admin"]);
+      const session = await requireSession(request, ["supervisor", "admin"]);
       const body = await readBody(request);
       const settings = body.settings;
+      if (!Array.isArray(settings?.technicians) || !Array.isArray(settings?.vessels)) {
+        return json({ error: "Configuracoes invalidas." }, 400);
+      }
+      if (session.role === "admin" && !Array.isArray(settings.accessAccounts)) {
+        return json({ error: "Contas de acesso invalidas." }, 400);
+      }
       const { error: settingsError } = await supabase
         .from("app_settings")
         .update({
           technicians: settings.technicians,
           vessels: settings.vessels,
-          allow_selfie_deletion: settings.allowSelfieDeletion,
+          ...(session.role === "admin"
+            ? { allow_selfie_deletion: settings.allowSelfieDeletion }
+            : {}),
           updated_at: new Date().toISOString(),
         })
         .eq("id", true);
       if (settingsError) throw settingsError;
 
-      const ids = settings.accessAccounts.map((account: { id: string }) => account.id);
-      const { data: currentAccounts, error: currentAccountsError } = await supabase
-        .from("app_access_accounts")
-        .select("id");
-      if (currentAccountsError) throw currentAccountsError;
-      const removedIds = (currentAccounts ?? [])
-        .map((account) => account.id)
-        .filter((id) => !ids.includes(id));
-      if (removedIds.length) {
-        const { error: deleteError } = await supabase
+      if (session.role === "admin") {
+        const ids = settings.accessAccounts.map((account: { id: string }) => account.id);
+        const { data: currentAccounts, error: currentAccountsError } = await supabase
           .from("app_access_accounts")
-          .delete()
-          .in("id", removedIds);
-        if (deleteError) throw deleteError;
+          .select("id");
+        if (currentAccountsError) throw currentAccountsError;
+        const removedIds = (currentAccounts ?? [])
+          .map((account) => account.id)
+          .filter((id) => !ids.includes(id));
+        if (removedIds.length) {
+          const { error: deleteError } = await supabase
+            .from("app_access_accounts")
+            .delete()
+            .in("id", removedIds);
+          if (deleteError) throw deleteError;
+        }
+        for (const account of settings.accessAccounts) {
+          const { error } = await supabase.rpc("set_app_access_account", {
+            account_id: account.id,
+            account_role: account.role,
+            account_name: account.name,
+            account_username: account.username,
+            account_password: account.password ?? "",
+            account_active: account.active,
+          });
+          if (error) throw error;
+        }
       }
-      for (const account of settings.accessAccounts) {
-        const { error } = await supabase.rpc("set_app_access_account", {
-          account_id: account.id,
-          account_role: account.role,
-          account_name: account.name,
-          account_username: account.username,
-          account_password: account.password ?? "",
-          account_active: account.active,
-        });
-        if (error) throw error;
-      }
-      return json({ settings: await getSettings() });
+      return json({ settings: await getSettings(session.role === "admin") });
     }
 
     if (request.method === "GET" && action === "selfies") {
