@@ -27,10 +27,5 @@ npm run build
 Enquanto as variaveis do Supabase nao estiverem configuradas, o MVP funciona
 em modo demonstracao usando `localStorage`.
 
-## Acessos de demonstracao
-
-- Administrador: `admin` / `Muniz@2026`
-- Supervisor: `Coordenador` / `Martins@2026`
-- Financeiro: `Financeiro` / `Sea@2026@`
 
 O colaborador seleciona o proprio nome e registra uma selfie antes de acessar.
