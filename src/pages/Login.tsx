@@ -12,7 +12,9 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import sealabLogo from "../assets/sealab-logo.png";
+import { collaboratorLogin, managerLogin } from "../lib/api";
 import { saveSelfie } from "../lib/storage";
+import { isDemoMode } from "../lib/supabase";
 import type { AuthUser, Role, SelfieRecord } from "../types";
 import type { SystemSettings } from "../types";
 
@@ -32,6 +34,7 @@ export function Login({ onLogin, settings }: LoginProps) {
   const [photo, setPhoto] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -103,43 +106,70 @@ export function Login({ onLogin, settings }: LoginProps) {
     stopCamera();
   }
 
-  function submitManager(event: React.FormEvent) {
+  async function submitManager(event: React.FormEvent) {
     event.preventDefault();
     if (role === "colaborador") return;
-    const expected = settings.accessAccounts.find(
-      (account) =>
-        account.role === role &&
-        account.active &&
-        account.username === username &&
-        account.password === password,
-    );
-    if (!expected) {
-      setError("Usuario ou senha incorretos.");
-      return;
+    setSubmitting(true);
+    setError("");
+    try {
+      if (!isDemoMode) {
+        const { user } = await managerLogin(role, username, password);
+        onLogin(user);
+        navigate(role === "financeiro" ? "/registros" : "/");
+        return;
+      }
+      const expected = settings.accessAccounts.find(
+        (account) =>
+          account.role === role &&
+          account.active &&
+          account.username === username &&
+          account.password === password,
+      );
+      if (!expected) {
+        setError("Usuario ou senha incorretos.");
+        return;
+      }
+      onLogin({ role, name: expected.name, username });
+      navigate(role === "financeiro" ? "/registros" : "/");
+    } catch (submitError) {
+      setError((submitError as Error).message);
+    } finally {
+      setSubmitting(false);
     }
-    onLogin({ role, name: expected.name, username });
-    navigate(role === "financeiro" ? "/registros" : "/");
   }
 
-  function submitCollaborator(event: React.FormEvent) {
+  async function submitCollaborator(event: React.FormEvent) {
     event.preventDefault();
     if (!technician || !photo) {
       setError("Selecione seu nome e registre uma selfie para continuar.");
       return;
     }
+    setSubmitting(true);
+    setError("");
     const selfie: SelfieRecord = {
       id: `SELFIE-${Date.now()}`,
       technician,
       imageData: photo,
       capturedAt: new Date().toISOString(),
     };
-    saveSelfie(selfie);
-    onLogin({
-      role: "colaborador",
-      name: technician,
-      selfieSessionId: selfie.id,
-    });
-    navigate("/novo");
+    try {
+      if (!isDemoMode) {
+        const { user } = await collaboratorLogin(technician, photo);
+        onLogin(user);
+      } else {
+        saveSelfie(selfie);
+        onLogin({
+          role: "colaborador",
+          name: technician,
+          selfieSessionId: selfie.id,
+        });
+      }
+      navigate("/novo");
+    } catch (submitError) {
+      setError((submitError as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -232,8 +262,8 @@ export function Login({ onLogin, settings }: LoginProps) {
                 </div>
               </div>
               {error && <div className="login-error"><AlertCircle size={17} /> {error}</div>}
-              <button className="button button-primary login-submit" disabled={!technician || !photo}>
-                Entrar na plataforma
+              <button className="button button-primary login-submit" disabled={!technician || !photo || submitting}>
+                {submitting ? "Registrando acesso..." : "Entrar na plataforma"}
               </button>
             </form>
           ) : (
@@ -259,7 +289,9 @@ export function Login({ onLogin, settings }: LoginProps) {
                 </div>
               </label>
               {error && <div className="login-error"><AlertCircle size={17} /> {error}</div>}
-              <button className="button button-primary login-submit">Entrar na plataforma</button>
+              <button className="button button-primary login-submit" disabled={submitting}>
+                {submitting ? "Validando..." : "Entrar na plataforma"}
+              </button>
             </form>
           )}
         </div>

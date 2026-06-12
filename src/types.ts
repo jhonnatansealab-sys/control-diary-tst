@@ -9,6 +9,7 @@ export interface AuthUser {
   name: string;
   username?: string;
   selfieSessionId?: string;
+  sessionToken?: string;
 }
 
 export interface SelfieRecord {
