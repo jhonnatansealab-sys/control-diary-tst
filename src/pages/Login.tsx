@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  Anchor,
   Camera,
   CheckCircle2,
   Eye,
@@ -11,6 +10,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import sealabLogo from "../assets/sealab-logo.png";
 import { saveSelfie } from "../lib/storage";
 import type { AuthUser, Role, SelfieRecord } from "../types";
 import type { SystemSettings } from "../types";
@@ -21,6 +22,7 @@ interface LoginProps {
 }
 
 export function Login({ onLogin, settings }: LoginProps) {
+  const navigate = useNavigate();
   const [role, setRole] = useState<Role>("colaborador");
   const [choosingRole, setChoosingRole] = useState(false);
   const [username, setUsername] = useState("");
@@ -116,6 +118,7 @@ export function Login({ onLogin, settings }: LoginProps) {
       return;
     }
     onLogin({ role, name: expected.name, username });
+    navigate(role === "financeiro" ? "/registros" : "/");
   }
 
   function submitCollaborator(event: React.FormEvent) {
@@ -136,19 +139,19 @@ export function Login({ onLogin, settings }: LoginProps) {
       name: technician,
       selfieSessionId: selfie.id,
     });
+    navigate("/novo");
   }
 
   return (
     <main className="login-page">
       <section className="login-visual">
         <div className="login-brand">
-          <span><Anchor size={29} /></span>
-          <div><strong>Diarias TST</strong><small>Controle operacional</small></div>
+          <img src={sealabLogo} alt="Sealab Medicina Ocupacional" />
         </div>
         <div className="login-message">
           <span className="eyebrow light">CONTROLE SEGURO E SIMPLES</span>
           <h1>Registre sua jornada com confianca.</h1>
-          <p>Uma plataforma unica para tecnicos, supervisores e administradores.</p>
+          <p>Plataforma unificada de registro de Diárias</p>
         </div>
         <div className="login-security"><ShieldCheck size={19} /> Acesso protegido e registros auditaveis</div>
       </section>

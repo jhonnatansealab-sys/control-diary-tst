@@ -1,5 +1,4 @@
 import {
-  Anchor,
   ClipboardList,
   FilePenLine,
   Gauge,
@@ -14,6 +13,7 @@ import { useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import type { AuthUser } from "../types";
 import { isDemoMode } from "../lib/supabase";
+import sealabLogo from "../assets/sealab-logo.png";
 
 interface LayoutProps {
   children: ReactNode;
@@ -44,13 +44,7 @@ export function Layout({ children, user, onLogout }: LayoutProps) {
     <div className="app-shell">
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
         <div className="brand">
-          <div className="brand-mark">
-            <Anchor size={24} strokeWidth={2.4} />
-          </div>
-          <div>
-            <strong>Diarias TST</strong>
-            <span>Controle operacional</span>
-          </div>
+          <img className="sidebar-logo" src={sealabLogo} alt="Sealab Medicina Ocupacional" />
           <button className="icon-button sidebar-close" onClick={() => setOpen(false)}>
             <X size={20} />
           </button>

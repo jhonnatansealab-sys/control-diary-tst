@@ -21,6 +21,7 @@ import type { AuthUser, DiaryRecord, EditRequest } from "./types";
 
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(loadSessionFromBrowser);
+  const [showPaymentWarning, setShowPaymentWarning] = useState(false);
   const [records, setRecords] = useState<DiaryRecord[]>(loadRecords);
   const [requests, setRequests] = useState<EditRequest[]>(loadRequests);
   const [settings, setSettings] = useState(loadSettings);
@@ -31,11 +32,13 @@ export default function App() {
 
   function login(nextUser: AuthUser) {
     setUser(nextUser);
+    setShowPaymentWarning(nextUser.role === "colaborador");
     saveSession(nextUser);
   }
 
   function logout() {
     setUser(null);
+    setShowPaymentWarning(false);
     saveSession(null);
   }
 
@@ -80,7 +83,22 @@ export default function App() {
     <Layout user={user} onLogout={logout}>
       <Routes>
         <Route path="/" element={user.role === "financeiro" ? <Navigate to="/registros" replace /> : <Dashboard user={user} records={records} requests={requests} />} />
-        <Route path="/novo" element={user.role === "financeiro" ? <Navigate to="/registros" replace /> : <NewDiary user={user} settings={settings} onSave={addRecord} />} />
+        <Route
+          path="/novo"
+          element={
+            user.role === "financeiro"
+              ? <Navigate to="/registros" replace />
+              : (
+                <NewDiary
+                  user={user}
+                  settings={settings}
+                  onSave={addRecord}
+                  showPaymentWarning={showPaymentWarning}
+                  onDismissPaymentWarning={() => setShowPaymentWarning(false)}
+                />
+              )
+          }
+        />
         <Route path="/registros" element={<Records user={user} records={records} settings={settings} onRequest={addRequest} />} />
         <Route path="/solicitacoes" element={user.role === "financeiro" ? <Navigate to="/registros" replace /> : <Requests user={user} requests={requests} onStatusChange={updateRequest} />} />
         <Route path="/administracao" element={user.role === "admin" ? <Admin settings={settings} onSettingsChange={setSettings} /> : <Navigate to="/" replace />} />

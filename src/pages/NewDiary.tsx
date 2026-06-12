@@ -8,6 +8,8 @@ interface NewDiaryProps {
   user: AuthUser;
   settings: SystemSettings;
   onSave: (record: DiaryRecord) => void;
+  showPaymentWarning: boolean;
+  onDismissPaymentWarning: () => void;
 }
 
 function localDate() {
@@ -19,7 +21,13 @@ function localDate() {
 
 const emptyTurn: TurnEntry = { shift: "Diurno", activity: "Area", vessels: [] };
 
-export function NewDiary({ user, settings, onSave }: NewDiaryProps) {
+export function NewDiary({
+  user,
+  settings,
+  onSave,
+  showPaymentWarning,
+  onDismissPaymentWarning,
+}: NewDiaryProps) {
   const navigate = useNavigate();
   const [date, setDate] = useState(localDate());
   const [technician, setTechnician] = useState(
@@ -69,6 +77,24 @@ export function NewDiary({ user, settings, onSave }: NewDiaryProps) {
 
   return (
     <>
+      {user.role === "colaborador" && showPaymentWarning && (
+        <div className="payment-warning-backdrop" role="dialog" aria-modal="true" aria-labelledby="payment-warning-title">
+          <section className="payment-warning-modal">
+            <span className="payment-warning-icon"><AlertCircle size={46} /></span>
+            <span className="payment-warning-eyebrow">ATENÇÃO, COLABORADOR</span>
+            <h2 id="payment-warning-title">
+              SE A DIÁRIA NÃO FOR PREENCHIDA, ISSO VAI PREJUDICAR O SEU PAGAMENTO!
+            </h2>
+            <p>
+              Preencha o registro corretamente todos os dias, informando turno,
+              atividade e embarcação.
+            </p>
+            <button className="button payment-warning-button" onClick={onDismissPaymentWarning}>
+              ESTOU CIENTE. PREENCHER AGORA
+            </button>
+          </section>
+        </div>
+      )}
       <section className="page-heading compact-heading">
         <button className="back-link" onClick={() => navigate(-1)}>
           <ArrowLeft size={18} /> Voltar
