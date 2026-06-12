@@ -11,27 +11,18 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { technicians } from "../data";
 import { saveSelfie } from "../lib/storage";
 import type { AuthUser, Role, SelfieRecord } from "../types";
+import type { SystemSettings } from "../types";
 
 interface LoginProps {
   onLogin: (user: AuthUser) => void;
+  settings: SystemSettings;
 }
 
-type LoginRole = Role | null;
-
-const managerCredentials = {
-  admin: { username: "admin", password: "Muniz@2026", name: "Administrador" },
-  supervisor: {
-    username: "Coordenador",
-    password: "Martins@2026",
-    name: "Coordenador",
-  },
-} as const;
-
-export function Login({ onLogin }: LoginProps) {
-  const [role, setRole] = useState<LoginRole>(null);
+export function Login({ onLogin, settings }: LoginProps) {
+  const [role, setRole] = useState<Role>("colaborador");
+  const [choosingRole, setChoosingRole] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -57,8 +48,10 @@ export function Login({ onLogin }: LoginProps) {
     setRole(nextRole);
     setError("");
     setPhoto("");
-    setUsername(nextRole === "admin" ? "admin" : nextRole === "supervisor" ? "Coordenador" : "");
+    const account = settings.accessAccounts.find((item) => item.role === nextRole);
+    setUsername(account?.username ?? "");
     setPassword("");
+    setChoosingRole(false);
   }
 
   async function startCamera() {
@@ -110,9 +103,15 @@ export function Login({ onLogin }: LoginProps) {
 
   function submitManager(event: React.FormEvent) {
     event.preventDefault();
-    if (role !== "admin" && role !== "supervisor") return;
-    const expected = managerCredentials[role];
-    if (username !== expected.username || password !== expected.password) {
+    if (role === "colaborador") return;
+    const expected = settings.accessAccounts.find(
+      (account) =>
+        account.role === role &&
+        account.active &&
+        account.username === username &&
+        account.password === password,
+    );
+    if (!expected) {
       setError("Usuario ou senha incorretos.");
       return;
     }
@@ -156,19 +155,22 @@ export function Login({ onLogin }: LoginProps) {
 
       <section className="login-content">
         <div className="login-box">
-          {!role ? (
+          {choosingRole ? (
             <>
-              <span className="eyebrow">BEM-VINDO</span>
-              <h2>Como voce deseja entrar?</h2>
-              <p>Selecione seu perfil de acesso para continuar.</p>
+              <button type="button" className="login-back button-like" onClick={() => setChoosingRole(false)}>
+                Voltar para colaborador
+              </button>
+              <span className="eyebrow">OUTROS PERFIS</span>
+              <h2>Escolha o tipo de acesso</h2>
+              <p>Os perfis abaixo exigem usuario e senha.</p>
               <div className="role-options">
-                <button onClick={() => chooseRole("colaborador")}>
-                  <span><Camera size={22} /></span>
-                  <div><strong>Colaborador</strong><small>Selecionar nome e registrar selfie</small></div>
-                </button>
                 <button onClick={() => chooseRole("supervisor")}>
                   <span><UserRound size={22} /></span>
                   <div><strong>Supervisor</strong><small>Acompanhar equipe e aprovar edicoes</small></div>
+                </button>
+                <button onClick={() => chooseRole("financeiro")}>
+                  <span><LockKeyhole size={22} /></span>
+                  <div><strong>Financeiro</strong><small>Consultar registros e exportar relatorios</small></div>
                 </button>
                 <button onClick={() => chooseRole("admin")}>
                   <span><LockKeyhole size={22} /></span>
@@ -178,8 +180,8 @@ export function Login({ onLogin }: LoginProps) {
             </>
           ) : role === "colaborador" ? (
             <form onSubmit={submitCollaborator}>
-              <button type="button" className="login-back" onClick={() => { stopCamera(); setRole(null); setError(""); }}>
-                Trocar perfil
+              <button type="button" className="profile-switch-button" onClick={() => { stopCamera(); setChoosingRole(true); setError(""); }}>
+                <UserRound size={17} /> Acessar como Supervisor, Financeiro ou Administrador
               </button>
               <span className="eyebrow">ACESSO DO COLABORADOR</span>
               <h2>Identifique-se</h2>
@@ -188,7 +190,7 @@ export function Login({ onLogin }: LoginProps) {
                 <span>Quem esta acessando? <b>*</b></span>
                 <select value={technician} onChange={(event) => { setTechnician(event.target.value); setPhoto(""); }}>
                   <option value="">Selecione seu nome</option>
-                  {technicians.map((name) => <option key={name}>{name}</option>)}
+                  {settings.technicians.map((name) => <option key={name}>{name}</option>)}
                 </select>
               </label>
 
@@ -233,8 +235,10 @@ export function Login({ onLogin }: LoginProps) {
             </form>
           ) : (
             <form onSubmit={submitManager}>
-              <button type="button" className="login-back" onClick={() => setRole(null)}>Trocar perfil</button>
-              <span className="eyebrow">{role === "admin" ? "ACESSO ADMINISTRATIVO" : "ACESSO DA SUPERVISAO"}</span>
+              <button type="button" className="login-back button-like" onClick={() => { setRole("colaborador"); setError(""); }}>Voltar para colaborador</button>
+              <span className="eyebrow">
+                {role === "admin" ? "ACESSO ADMINISTRATIVO" : role === "financeiro" ? "ACESSO FINANCEIRO" : "ACESSO DA SUPERVISAO"}
+              </span>
               <h2>Entre com suas credenciais</h2>
               <p>Informe o usuario e a senha definidos para este perfil.</p>
               <label className="field login-field">

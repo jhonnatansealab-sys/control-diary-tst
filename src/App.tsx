@@ -5,9 +5,11 @@ import {
   loadRecords,
   loadRequests,
   loadSessionFromBrowser,
+  loadSettings,
   saveRecords,
   saveRequests,
   saveSession,
+  saveSettings,
 } from "./lib/storage";
 import { Admin } from "./pages/Admin";
 import { Dashboard } from "./pages/Dashboard";
@@ -21,9 +23,11 @@ export default function App() {
   const [user, setUser] = useState<AuthUser | null>(loadSessionFromBrowser);
   const [records, setRecords] = useState<DiaryRecord[]>(loadRecords);
   const [requests, setRequests] = useState<EditRequest[]>(loadRequests);
+  const [settings, setSettings] = useState(loadSettings);
 
   useEffect(() => saveRecords(records), [records]);
   useEffect(() => saveRequests(requests), [requests]);
+  useEffect(() => saveSettings(settings), [settings]);
 
   function login(nextUser: AuthUser) {
     setUser(nextUser);
@@ -44,30 +48,42 @@ export default function App() {
     setRecords((current) =>
       current.map((record) =>
         record.id === request.recordId
-          ? { ...record, status: "Edicao solicitada" }
+          ? { ...record, status: "Solicitacao enviada" }
           : record,
       ),
     );
   }
 
   function updateRequest(id: string, status: "Aprovada" | "Rejeitada") {
+    const request = requests.find((item) => item.id === id);
     setRequests((current) =>
       current.map((request) => (request.id === id ? { ...request, status } : request)),
     );
+    if (request) {
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === request.recordId
+            ? status === "Aprovada"
+              ? { ...request.proposedRecord, status: "Corrigido" }
+              : { ...record, status: "Registrado" }
+            : record,
+        ),
+      );
+    }
   }
 
   if (!user) {
-    return <Login onLogin={login} />;
+    return <Login onLogin={login} settings={settings} />;
   }
 
   return (
     <Layout user={user} onLogout={logout}>
       <Routes>
-        <Route path="/" element={<Dashboard user={user} records={records} requests={requests} />} />
-        <Route path="/novo" element={<NewDiary user={user} onSave={addRecord} />} />
-        <Route path="/registros" element={<Records user={user} records={records} onRequest={addRequest} />} />
-        <Route path="/solicitacoes" element={<Requests user={user} requests={requests} onStatusChange={updateRequest} />} />
-        <Route path="/administracao" element={user.role === "admin" ? <Admin /> : <Navigate to="/" replace />} />
+        <Route path="/" element={user.role === "financeiro" ? <Navigate to="/registros" replace /> : <Dashboard user={user} records={records} requests={requests} />} />
+        <Route path="/novo" element={user.role === "financeiro" ? <Navigate to="/registros" replace /> : <NewDiary user={user} settings={settings} onSave={addRecord} />} />
+        <Route path="/registros" element={<Records user={user} records={records} settings={settings} onRequest={addRequest} />} />
+        <Route path="/solicitacoes" element={user.role === "financeiro" ? <Navigate to="/registros" replace /> : <Requests user={user} requests={requests} onStatusChange={updateRequest} />} />
+        <Route path="/administracao" element={user.role === "admin" ? <Admin settings={settings} onSettingsChange={setSettings} /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

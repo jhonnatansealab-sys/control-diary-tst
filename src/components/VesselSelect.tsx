@@ -1,22 +1,23 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useState } from "react";
-import { vessels } from "../data";
-
 interface VesselSelectProps {
   value: string[];
   onChange: (vessels: string[]) => void;
   id: string;
+  options: string[];
+  single?: boolean;
 }
 
-export function VesselSelect({ value, onChange, id }: VesselSelectProps) {
+export function VesselSelect({ value, onChange, id, options, single = false }: VesselSelectProps) {
   const [open, setOpen] = useState(false);
 
   function toggle(vessel: string) {
-    onChange(
-      value.includes(vessel)
-        ? value.filter((item) => item !== vessel)
-        : [...value, vessel],
-    );
+    if (single) {
+      onChange(value.includes(vessel) ? [] : [vessel]);
+      setOpen(false);
+      return;
+    }
+    onChange(value.includes(vessel) ? value.filter((item) => item !== vessel) : [...value, vessel]);
   }
 
   return (
@@ -28,12 +29,12 @@ export function VesselSelect({ value, onChange, id }: VesselSelectProps) {
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
       >
-        <span>{value.length ? value.join(", ") : "Selecione a embarcacao"}</span>
+        <span>{value.length ? value.join(", ") : "Selecione a embarcação"}</span>
         <ChevronDown size={18} />
       </button>
       {open && (
         <div className="select-popover">
-          {vessels.map((vessel) => (
+          {options.map((vessel) => (
             <button
               key={vessel}
               type="button"

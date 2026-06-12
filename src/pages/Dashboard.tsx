@@ -38,12 +38,15 @@ export function Dashboard({ user, records, requests }: DashboardProps) {
   })
     .format(now)
     .toUpperCase();
-  const pending = requests.filter((request) => request.status === "Pendente").length;
-  const doubles = records.filter((record) => record.turns.length === 2).length;
   const visibleRecords =
     user.role === "colaborador"
       ? records.filter((record) => record.technician === user.name)
       : records;
+  const visibleRequests = user.role === "colaborador"
+    ? requests.filter((request) => request.technician === user.name)
+    : requests;
+  const pending = visibleRequests.filter((request) => request.status === "Pendente").length;
+  const doubles = visibleRecords.filter((record) => record.turns.length === 2).length;
   const firstName = user.name.split(" ")[0];
 
   return (
@@ -77,7 +80,7 @@ export function Dashboard({ user, records, requests }: DashboardProps) {
         </article>
         <article className="stat-card">
           <span className="stat-icon blue"><CheckCircle2 size={22} /></span>
-          <div><strong>{records.filter((record) => record.date === today).length}</strong><span>Registros hoje</span></div>
+          <div><strong>{visibleRecords.filter((record) => record.date === today).length}</strong><span>Registros hoje</span></div>
           <small>Atualizado agora</small>
         </article>
         <article className="stat-card">
