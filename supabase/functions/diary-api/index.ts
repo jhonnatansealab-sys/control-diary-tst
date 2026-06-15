@@ -108,6 +108,54 @@ async function readBody(request: Request) {
   }
 }
 
+function saoPauloDate() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+interface RecordInput {
+  id?: string;
+  date?: string;
+  technician?: string;
+  turns?: TurnInput[];
+}
+
+interface TurnInput {
+  shift?: string;
+  activity?: string;
+  vessels?: unknown[];
+}
+
+function isValidRecord(record: RecordInput | null | undefined) {
+  if (
+    !record?.id ||
+    !record?.date ||
+    !record?.technician ||
+    !Array.isArray(record.turns) ||
+    record.turns.length < 1 ||
+    record.turns.length > 2
+  ) {
+    return false;
+  }
+  if (
+    record.turns.some((turn: TurnInput) =>
+      !turn?.shift ||
+      !turn?.activity ||
+      !Array.isArray(turn.vessels) ||
+      turn.vessels.length < 1
+    )
+  ) {
+    return false;
+  }
+  return record.turns.length !== 2 || record.turns[0].shift !== record.turns[1].shift;
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -203,11 +251,20 @@ Deno.serve(async (request) => {
       const session = await requireSession(request, ["colaborador", "supervisor", "admin"]);
       const body = await readBody(request);
       const record = body.record;
-      if (!record?.id || !record?.date || !record?.technician) {
+      if (!isValidRecord(record)) {
         return json({ error: "Registro invalido." }, 400);
       }
       if (session.role === "colaborador" && record.technician !== session.name) {
         return json({ error: "Colaborador so pode registrar a propria diaria." }, 403);
+      }
+      if (
+        session.role === "colaborador" &&
+        record.turns.some((turn: TurnInput) => turn.vessels?.length !== 1)
+      ) {
+        return json({ error: "Informe somente uma embarcacao por turno." }, 400);
+      }
+      if (session.role === "colaborador" && record.date > saoPauloDate()) {
+        return json({ error: "Colaborador nao pode registrar diaria em data futura." }, 403);
       }
       const { error } = await supabase.from("app_diary_records").insert({
         id: record.id,
@@ -229,6 +286,15 @@ Deno.serve(async (request) => {
       if (session.role === "colaborador" && editRequest.technician !== session.name) {
         return json({ error: "Solicitacao nao autorizada." }, 403);
       }
+      if (!isValidRecord(editRequest.proposedRecord)) {
+        return json({ error: "Registro proposto invalido." }, 400);
+      }
+      if (
+        session.role === "colaborador" &&
+        editRequest.proposedRecord.date > saoPauloDate()
+      ) {
+        return json({ error: "Colaborador nao pode solicitar uma data futura." }, 403);
+      }
       const updatedRecord = {
         ...editRequest.originalRecord,
         status: "Solicitacao enviada",
@@ -249,6 +315,74 @@ Deno.serve(async (request) => {
       if (requestError) throw requestError;
       if (recordError) throw recordError;
       return json({ request: editRequest });
+    }
+
+    if (request.method === "PATCH" && action === "record") {
+      await requireSession(request, ["admin"]);
+      const body = await readBody(request);
+      const record = body.record;
+      if (!isValidRecord(record)) {
+        return json({ error: "Registro invalido." }, 400);
+      }
+      const { data: existing, error: existingError } = await supabase
+        .from("app_diary_records")
+        .select("id")
+        .eq("id", record.id)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing) return json({ error: "Registro nao encontrado." }, 404);
+
+      const { data: pendingRequests, error: pendingError } = await supabase
+        .from("app_edit_requests")
+        .select("id,payload")
+        .eq("record_id", record.id)
+        .eq("status", "Pendente");
+      if (pendingError) throw pendingError;
+
+      const updatedAt = new Date().toISOString();
+      const nextRecord = { ...record, status: "Corrigido" };
+      const { error: recordError } = await supabase
+        .from("app_diary_records")
+        .update({
+          work_date: nextRecord.date,
+          technician: nextRecord.technician,
+          payload: nextRecord,
+          updated_at: updatedAt,
+        })
+        .eq("id", nextRecord.id);
+      if (recordError) throw recordError;
+
+      await Promise.all((pendingRequests ?? []).map(async (pending) => {
+        const { error } = await supabase
+          .from("app_edit_requests")
+          .update({
+            status: "Rejeitada",
+            payload: { ...pending.payload, status: "Rejeitada" },
+            updated_at: updatedAt,
+          })
+          .eq("id", pending.id);
+        if (error) throw error;
+      }));
+
+      return json({
+        record: nextRecord,
+        rejectedRequestIds: (pendingRequests ?? []).map((pending) => pending.id),
+      });
+    }
+
+    if (request.method === "DELETE" && action === "record") {
+      await requireSession(request, ["admin"]);
+      const id = url.searchParams.get("id");
+      if (!id) return json({ error: "Identificador do registro nao informado." }, 400);
+      const { data, error } = await supabase
+        .from("app_diary_records")
+        .delete()
+        .eq("id", id)
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return json({ error: "Registro nao encontrado." }, 404);
+      return json({ ok: true, id });
     }
 
     if (request.method === "PATCH" && action === "request-status") {

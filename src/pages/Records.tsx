@@ -1,4 +1,15 @@
-import { Download, FilePenLine, Filter, Search, Ship, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Download,
+  FilePenLine,
+  Filter,
+  Pencil,
+  Save,
+  Search,
+  Ship,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { StatusBadge } from "../components/StatusBadge";
@@ -19,15 +30,33 @@ interface RecordsProps {
   records: DiaryRecord[];
   settings: SystemSettings;
   onRequest: (request: EditRequest) => void;
+  onAdminUpdate: (record: DiaryRecord) => Promise<boolean>;
+  onAdminDelete: (id: string) => Promise<boolean>;
 }
 
-export function Records({ user, records, settings, onRequest }: RecordsProps) {
+function localDate() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+export function Records({
+  user,
+  records,
+  settings,
+  onRequest,
+  onAdminUpdate,
+  onAdminDelete,
+}: RecordsProps) {
   const location = useLocation();
   const [query, setQuery] = useState("");
   const [shift, setShift] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selected, setSelected] = useState<DiaryRecord | null>(null);
+  const [adminEditing, setAdminEditing] = useState<DiaryRecord | null>(null);
+  const [adminDeleting, setAdminDeleting] = useState<DiaryRecord | null>(null);
   const [exportError, setExportError] = useState("");
 
   const filtered = useMemo(() => {
@@ -155,6 +184,19 @@ export function Records({ user, records, settings, onRequest }: RecordsProps) {
                         <FilePenLine size={18} /> Solicitar edição
                       </button>
                     )}
+                    {user.role === "admin" && (
+                      <div className="admin-record-actions">
+                        <button className="row-action" onClick={() => setAdminEditing(record)}>
+                          <Pencil size={16} /> Editar
+                        </button>
+                        <button
+                          className="row-action admin-delete-action"
+                          onClick={() => setAdminDeleting(record)}
+                        >
+                          <Trash2 size={16} /> Excluir
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -168,6 +210,30 @@ export function Records({ user, records, settings, onRequest }: RecordsProps) {
           vessels={settings.vessels}
           onClose={() => setSelected(null)}
           onSubmit={(request) => { onRequest(request); setSelected(null); }}
+        />
+      )}
+      {adminEditing && (
+        <AdminEditRecordModal
+          record={adminEditing}
+          technicians={settings.technicians}
+          vessels={settings.vessels}
+          onClose={() => setAdminEditing(null)}
+          onSave={async (record) => {
+            const saved = await onAdminUpdate(record);
+            if (saved) setAdminEditing(null);
+            return saved;
+          }}
+        />
+      )}
+      {adminDeleting && (
+        <DeleteRecordModal
+          record={adminDeleting}
+          onClose={() => setAdminDeleting(null)}
+          onConfirm={async () => {
+            const deleted = await onAdminDelete(adminDeleting.id);
+            if (deleted) setAdminDeleting(null);
+            return deleted;
+          }}
         />
       )}
     </>
@@ -214,6 +280,10 @@ function EditRecordModal({ record, vessels, onClose, onSubmit }: EditRecordModal
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (draft.date > localDate()) {
+      setError("Nao e permitido solicitar alteracao para uma data futura.");
+      return;
+    }
     if (!reason.trim() || draft.turns.some((turn) => !turn.vessels.length)) {
       setError("Preencha o motivo e selecione uma embarcação para cada turno.");
       return;
@@ -239,7 +309,7 @@ function EditRecordModal({ record, vessels, onClose, onSubmit }: EditRecordModal
           <button type="button" className="icon-button" onClick={onClose}><X size={20} /></button>
         </div>
         <div className="form-grid two-columns">
-          <label className="field"><span>Data</span><input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label>
+          <label className="field"><span>Data</span><input type="date" max={localDate()} value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label>
           <label className="field"><span>Técnico</span><input value={draft.technician} disabled /></label>
         </div>
         {draft.turns.map((turn, index) => (
@@ -263,6 +333,229 @@ function EditRecordModal({ record, vessels, onClose, onSubmit }: EditRecordModal
           <button className="button button-primary"><FilePenLine size={17} /> Solicitar edição</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+interface AdminEditRecordModalProps {
+  record: DiaryRecord;
+  technicians: string[];
+  vessels: string[];
+  onClose: () => void;
+  onSave: (record: DiaryRecord) => Promise<boolean>;
+}
+
+function AdminEditRecordModal({
+  record,
+  technicians,
+  vessels,
+  onClose,
+  onSave,
+}: AdminEditRecordModalProps) {
+  const [draft, setDraft] = useState<DiaryRecord>(() => cloneJson(record));
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function updateTurn(index: number, patch: Partial<TurnEntry>) {
+    setDraft((current) => ({
+      ...current,
+      turns: current.turns.map((turn, turnIndex) => {
+        if (turnIndex === index) return { ...turn, ...patch };
+        if (index === 0 && turnIndex === 1 && patch.shift) {
+          return { ...turn, shift: patch.shift === "Diurno" ? "Noturno" : "Diurno" };
+        }
+        return turn;
+      }),
+    }));
+  }
+
+  function toggleDouble() {
+    setDraft((current) => ({
+      ...current,
+      turns: current.turns.length === 2
+        ? [current.turns[0]]
+        : [...current.turns, {
+            shift: current.turns[0].shift === "Diurno" ? "Noturno" : "Diurno",
+            activity: "Area",
+            vessels: [],
+          }],
+    }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!draft.date || !draft.technician) {
+      setError("Informe a data e o tecnico.");
+      return;
+    }
+    if (draft.turns.some((turn) => !turn.vessels.length)) {
+      setError("Selecione uma embarcacao para cada turno.");
+      return;
+    }
+    if (draft.turns.length === 2 && draft.turns[0].shift === draft.turns[1].shift) {
+      setError("Os turnos da dobra precisam ser diferentes.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    const saved = await onSave({ ...draft, status: "Corrigido" });
+    if (!saved) {
+      setSaving(false);
+      setError("Nao foi possivel salvar a alteracao. Tente novamente.");
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <form className="modal edit-record-modal" onSubmit={submit}>
+        <div className="modal-header">
+          <div>
+            <span className="eyebrow">ADMINISTRACAO · {record.id}</span>
+            <h2>Editar registro</h2>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} disabled={saving}>
+            <X size={20} />
+          </button>
+        </div>
+        <p className="admin-edit-note">
+          A alteracao sera aplicada diretamente. Solicitacoes pendentes deste registro serao rejeitadas.
+        </p>
+        <div className="form-grid two-columns">
+          <label className="field">
+            <span>Data</span>
+            <input
+              type="date"
+              value={draft.date}
+              onChange={(event) => setDraft({ ...draft, date: event.target.value })}
+              required
+            />
+          </label>
+          <label className="field">
+            <span>Tecnico</span>
+            <select
+              value={draft.technician}
+              onChange={(event) => setDraft({ ...draft, technician: event.target.value })}
+              required
+            >
+              {!technicians.includes(draft.technician) && (
+                <option value={draft.technician}>{draft.technician}</option>
+              )}
+              {technicians.map((technician) => (
+                <option key={technician} value={technician}>{technician}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {draft.turns.map((turn, index) => (
+          <section className="edit-turn-card" key={index}>
+            <strong>{index === 0 ? "Primeiro turno" : "Segundo turno"}</strong>
+            <div className="form-grid">
+              <label className="field">
+                <span>Turno</span>
+                <select
+                  value={turn.shift}
+                  onChange={(event) => updateTurn(index, { shift: event.target.value as Shift })}
+                  disabled={index === 1}
+                >
+                  <option>Diurno</option>
+                  <option>Noturno</option>
+                  <option>Não informado</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Atividade</span>
+                <select
+                  value={turn.activity}
+                  onChange={(event) => updateTurn(index, { activity: event.target.value as Activity })}
+                >
+                  <option value="Area">Operacional / Area</option>
+                  <option value="ADM">Administrativa</option>
+                  <option value="Não informado">Nao informado</option>
+                </select>
+              </label>
+              <label className="field full-width">
+                <span>Embarcacao</span>
+                <VesselSelect
+                  id={`admin-edit-vessel-${index}`}
+                  value={turn.vessels}
+                  onChange={(value) => updateTurn(index, { vessels: value })}
+                  options={vessels}
+                  single
+                />
+              </label>
+            </div>
+          </section>
+        ))}
+        <button
+          type="button"
+          className="button button-secondary double-edit-button"
+          onClick={toggleDouble}
+          disabled={saving}
+        >
+          {draft.turns.length === 2 ? "Remover dobra" : "Adicionar dobra"}
+        </button>
+        <label className="field">
+          <span>Observacoes</span>
+          <textarea
+            rows={3}
+            maxLength={500}
+            value={draft.notes}
+            onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+          />
+        </label>
+        {error && <div className="error-banner">{error}</div>}
+        <div className="form-actions">
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={saving}>
+            Cancelar
+          </button>
+          <button className="button button-primary" disabled={saving}>
+            <Save size={17} /> {saving ? "Salvando..." : "Salvar alteracoes"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+interface DeleteRecordModalProps {
+  record: DiaryRecord;
+  onClose: () => void;
+  onConfirm: () => Promise<boolean>;
+}
+
+function DeleteRecordModal({ record, onClose, onConfirm }: DeleteRecordModalProps) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function confirmDelete() {
+    setDeleting(true);
+    setError("");
+    const deleted = await onConfirm();
+    if (!deleted) {
+      setDeleting(false);
+      setError("Nao foi possivel excluir o registro. Tente novamente.");
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <section className="modal delete-record-modal" role="dialog" aria-modal="true">
+        <div className="delete-record-icon"><AlertTriangle size={28} /></div>
+        <h2>Excluir registro?</h2>
+        <p>
+          O registro <strong>{record.id}</strong>, de <strong>{record.technician}</strong>, sera
+          excluido permanentemente. Solicitacoes de correcao relacionadas tambem serao removidas.
+        </p>
+        {error && <div className="error-banner">{error}</div>}
+        <div className="form-actions">
+          <button className="button button-secondary" onClick={onClose} disabled={deleting}>
+            Cancelar
+          </button>
+          <button className="button button-danger-ghost" onClick={confirmDelete} disabled={deleting}>
+            <Trash2 size={17} /> {deleting ? "Excluindo..." : "Excluir definitivamente"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

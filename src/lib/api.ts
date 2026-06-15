@@ -74,6 +74,37 @@ export async function createRemoteRecord(user: AuthUser, record: DiaryRecord) {
   );
 }
 
+export async function updateRemoteRecord(user: AuthUser, record: DiaryRecord) {
+  return request<{ record: DiaryRecord; rejectedRequestIds: string[] }>(
+    "record",
+    { method: "PATCH", body: JSON.stringify({ record }) },
+    user.sessionToken,
+  );
+}
+
+export async function deleteRemoteRecord(user: AuthUser, id: string) {
+  if (!supabaseUrl || !supabasePublishableKey) {
+    throw new Error("Supabase nao configurado.");
+  }
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/diary-api?action=record&id=${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: supabasePublishableKey,
+        "x-app-session": user.sessionToken ?? "",
+      },
+    },
+  );
+  const body = await response.json().catch(() => ({
+    error: "Nao foi possivel excluir o registro.",
+  }));
+  if (!response.ok) {
+    throw new Error(body.error || "Nao foi possivel excluir o registro.");
+  }
+  return body as { ok: boolean; id: string };
+}
+
 export async function createRemoteRequest(user: AuthUser, editRequest: EditRequest) {
   return request<{ request: EditRequest }>(
     "request",

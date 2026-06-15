@@ -4,8 +4,10 @@ import { Layout } from "./components/Layout";
 import {
   createRemoteRecord,
   createRemoteRequest,
+  deleteRemoteRecord,
   fetchBootstrap,
   fetchRemoteState,
+  updateRemoteRecord,
   updateRemoteRequest,
   updateRemoteSettings,
 } from "./lib/api";
@@ -113,6 +115,52 @@ export default function App() {
     );
   }
 
+  async function updateRecord(record: DiaryRecord) {
+    if (!user || user.role !== "admin") return false;
+    let nextRecord = { ...record, status: "Corrigido" } as DiaryRecord;
+    let rejectedRequestIds: string[] = [];
+    if (!isDemoMode) {
+      try {
+        const response = await updateRemoteRecord(user, nextRecord);
+        nextRecord = response.record;
+        rejectedRequestIds = response.rejectedRequestIds;
+        setRemoteError("");
+      } catch (error) {
+        setRemoteError((error as Error).message);
+        return false;
+      }
+    }
+    setRecords((current) =>
+      current.map((item) => (item.id === nextRecord.id ? nextRecord : item)),
+    );
+    setRequests((current) =>
+      current.map((request) =>
+        request.recordId === nextRecord.id &&
+        request.status === "Pendente" &&
+        (!rejectedRequestIds.length || rejectedRequestIds.includes(request.id))
+          ? { ...request, status: "Rejeitada" }
+          : request,
+      ),
+    );
+    return true;
+  }
+
+  async function deleteRecord(id: string) {
+    if (!user || user.role !== "admin") return false;
+    if (!isDemoMode) {
+      try {
+        await deleteRemoteRecord(user, id);
+        setRemoteError("");
+      } catch (error) {
+        setRemoteError((error as Error).message);
+        return false;
+      }
+    }
+    setRecords((current) => current.filter((record) => record.id !== id));
+    setRequests((current) => current.filter((request) => request.recordId !== id));
+    return true;
+  }
+
   async function updateRequest(id: string, status: "Aprovada" | "Rejeitada") {
     if (!isDemoMode && user) {
       try {
@@ -179,7 +227,19 @@ export default function App() {
               )
           }
         />
-        <Route path="/registros" element={<Records user={user} records={records} settings={settings} onRequest={addRequest} />} />
+        <Route
+          path="/registros"
+          element={
+            <Records
+              user={user}
+              records={records}
+              settings={settings}
+              onRequest={addRequest}
+              onAdminUpdate={updateRecord}
+              onAdminDelete={deleteRecord}
+            />
+          }
+        />
         <Route path="/solicitacoes" element={user.role === "financeiro" ? <Navigate to="/registros" replace /> : <Requests user={user} requests={requests} onStatusChange={updateRequest} />} />
         <Route path="/administracao" element={["supervisor", "admin"].includes(user.role) ? <Admin user={user} settings={settings} onSettingsChange={changeSettings} /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
