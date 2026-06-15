@@ -16,6 +16,14 @@ function read<T>(key: string, fallback: T): T {
   }
 }
 
+function write(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Safari private mode and embedded browsers may block persistent storage.
+  }
+}
+
 export function loadRecords(): DiaryRecord[] {
   return read(RECORDS_KEY, demoRecords).map((record) =>
     record.status === ("Edicao solicitada" as DiaryRecord["status"])
@@ -25,7 +33,7 @@ export function loadRecords(): DiaryRecord[] {
 }
 
 export function saveRecords(records: DiaryRecord[]) {
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+  write(RECORDS_KEY, records);
 }
 
 export function loadRequests(): EditRequest[] {
@@ -35,14 +43,18 @@ export function loadRequests(): EditRequest[] {
 }
 
 export function saveRequests(requests: EditRequest[]) {
-  localStorage.setItem(REQUESTS_KEY, JSON.stringify(requests));
+  write(REQUESTS_KEY, requests);
 }
 
 export function saveSession(user: AuthUser | null) {
-  if (user) {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
-  } else {
-    sessionStorage.removeItem(SESSION_KEY);
+  try {
+    if (user) {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
+    } else {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  } catch {
+    // The active React session still works when browser storage is unavailable.
   }
 }
 
@@ -61,11 +73,11 @@ export function loadSelfies(): SelfieRecord[] {
 
 export function saveSelfie(selfie: SelfieRecord) {
   const current = loadSelfies();
-  localStorage.setItem(SELFIES_KEY, JSON.stringify([selfie, ...current].slice(0, 100)));
+  write(SELFIES_KEY, [selfie, ...current].slice(0, 100));
 }
 
 export function saveSelfies(selfies: SelfieRecord[]) {
-  localStorage.setItem(SELFIES_KEY, JSON.stringify(selfies));
+  write(SELFIES_KEY, selfies);
 }
 
 export function loadSettings(): SystemSettings {
@@ -83,5 +95,5 @@ export function loadSettings(): SystemSettings {
 }
 
 export function saveSettings(settings: SystemSettings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  write(SETTINGS_KEY, settings);
 }

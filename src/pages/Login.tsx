@@ -9,10 +9,12 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import sealabLogo from "../assets/sealab-logo.png";
+import { collaboratorLogin, managerLogin } from "../lib/api";
 import { saveSelfie } from "../lib/storage";
+import { isDemoMode } from "../lib/supabase";
 import type { AuthUser, Role, SelfieRecord } from "../types";
 import type { SystemSettings } from "../types";
 
@@ -32,12 +34,25 @@ export function Login({ onLogin, settings }: LoginProps) {
   const [photo, setPhoto] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [processingPhoto, setProcessingPhoto] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     return () => stopCamera();
   }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!cameraActive || !video || !stream) return;
+
+    video.srcObject = stream;
+    void video.play().catch(() => {
+      setError("A prévia da câmera não abriu. Use a opção Tirar foto pelo celular.");
+    });
+  }, [cameraActive]);
 
   function stopCamera() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -73,14 +88,54 @@ export function Login({ onLogin, settings }: LoginProps) {
       });
       streamRef.current = stream;
       setCameraActive(true);
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play();
-        }
-      });
     } catch {
-      setError("Nao foi possivel acessar a camera. Autorize o uso e tente novamente.");
+      setError("Não foi possível acessar a câmera. Use a opção Tirar foto pelo celular.");
+    }
+  }
+
+  function resizePhoto(source: string) {
+    return new Promise<string>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        const size = Math.min(image.naturalWidth, image.naturalHeight);
+        const canvas = document.createElement("canvas");
+        canvas.width = 520;
+        canvas.height = 520;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Não foi possível processar a foto."));
+          return;
+        }
+        const sourceX = (image.naturalWidth - size) / 2;
+        const sourceY = (image.naturalHeight - size) / 2;
+        context.drawImage(image, sourceX, sourceY, size, size, 0, 0, 520, 520);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.onerror = () => reject(new Error("Formato de foto não suportado."));
+      image.src = source;
+    });
+  }
+
+  async function usePhotoFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setProcessingPhoto(true);
+    setError("");
+    stopCamera();
+    try {
+      const source = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Não foi possível ler a foto."));
+        reader.readAsDataURL(file);
+      });
+      setPhoto(await resizePhoto(source));
+    } catch (photoError) {
+      setError((photoError as Error).message);
+    } finally {
+      setProcessingPhoto(false);
     }
   }
 
@@ -103,43 +158,70 @@ export function Login({ onLogin, settings }: LoginProps) {
     stopCamera();
   }
 
-  function submitManager(event: React.FormEvent) {
+  async function submitManager(event: React.FormEvent) {
     event.preventDefault();
     if (role === "colaborador") return;
-    const expected = settings.accessAccounts.find(
-      (account) =>
-        account.role === role &&
-        account.active &&
-        account.username === username &&
-        account.password === password,
-    );
-    if (!expected) {
-      setError("Usuario ou senha incorretos.");
-      return;
+    setSubmitting(true);
+    setError("");
+    try {
+      if (!isDemoMode) {
+        const { user } = await managerLogin(role, username, password);
+        onLogin(user);
+        navigate(role === "financeiro" ? "/registros" : "/");
+        return;
+      }
+      const expected = settings.accessAccounts.find(
+        (account) =>
+          account.role === role &&
+          account.active &&
+          account.username === username &&
+          account.password === password,
+      );
+      if (!expected) {
+        setError("Usuario ou senha incorretos.");
+        return;
+      }
+      onLogin({ role, name: expected.name, username });
+      navigate(role === "financeiro" ? "/registros" : "/");
+    } catch (submitError) {
+      setError((submitError as Error).message);
+    } finally {
+      setSubmitting(false);
     }
-    onLogin({ role, name: expected.name, username });
-    navigate(role === "financeiro" ? "/registros" : "/");
   }
 
-  function submitCollaborator(event: React.FormEvent) {
+  async function submitCollaborator(event: React.FormEvent) {
     event.preventDefault();
     if (!technician || !photo) {
       setError("Selecione seu nome e registre uma selfie para continuar.");
       return;
     }
+    setSubmitting(true);
+    setError("");
     const selfie: SelfieRecord = {
       id: `SELFIE-${Date.now()}`,
       technician,
       imageData: photo,
       capturedAt: new Date().toISOString(),
     };
-    saveSelfie(selfie);
-    onLogin({
-      role: "colaborador",
-      name: technician,
-      selfieSessionId: selfie.id,
-    });
-    navigate("/novo");
+    try {
+      if (!isDemoMode) {
+        const { user } = await collaboratorLogin(technician, photo);
+        onLogin(user);
+      } else {
+        saveSelfie(selfie);
+        onLogin({
+          role: "colaborador",
+          name: technician,
+          selfieSessionId: selfie.id,
+        });
+      }
+      navigate("/novo");
+    } catch (submitError) {
+      setError((submitError as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -205,7 +287,7 @@ export function Login({ onLogin, settings }: LoginProps) {
                   </div>
                 ) : cameraActive ? (
                   <div className="camera-preview">
-                    <video ref={videoRef} muted playsInline />
+                    <video ref={videoRef} autoPlay muted playsInline />
                     <div className="face-guide" />
                   </div>
                 ) : (
@@ -216,6 +298,15 @@ export function Login({ onLogin, settings }: LoginProps) {
                   </div>
                 )}
                 <div className="camera-actions">
+                  <input
+                    id="native-selfie-camera"
+                    className="native-camera-input"
+                    type="file"
+                    accept="image/*"
+                    capture="user"
+                    disabled={processingPhoto}
+                    onChange={usePhotoFile}
+                  />
                   {photo ? (
                     <button type="button" className="button button-secondary" onClick={() => setPhoto("")}>
                       <RotateCcw size={17} /> Tirar outra
@@ -225,15 +316,20 @@ export function Login({ onLogin, settings }: LoginProps) {
                       <Camera size={17} /> Capturar foto
                     </button>
                   ) : (
-                    <button type="button" className="button button-secondary" onClick={startCamera}>
-                      <Camera size={17} /> Abrir camera
-                    </button>
+                    <>
+                      <button type="button" className="button button-secondary" onClick={startCamera}>
+                        <Camera size={17} /> Abrir câmera
+                      </button>
+                      <label className={`button button-primary ${processingPhoto ? "disabled" : ""}`} htmlFor="native-selfie-camera">
+                        <Camera size={17} /> {processingPhoto ? "Processando..." : "Tirar foto pelo celular"}
+                      </label>
+                    </>
                   )}
                 </div>
               </div>
               {error && <div className="login-error"><AlertCircle size={17} /> {error}</div>}
-              <button className="button button-primary login-submit" disabled={!technician || !photo}>
-                Entrar na plataforma
+              <button className="button button-primary login-submit" disabled={!technician || !photo || submitting}>
+                {submitting ? "Registrando acesso..." : "Entrar na plataforma"}
               </button>
             </form>
           ) : (
@@ -259,7 +355,9 @@ export function Login({ onLogin, settings }: LoginProps) {
                 </div>
               </label>
               {error && <div className="login-error"><AlertCircle size={17} /> {error}</div>}
-              <button className="button button-primary login-submit">Entrar na plataforma</button>
+              <button className="button button-primary login-submit" disabled={submitting}>
+                {submitting ? "Validando..." : "Entrar na plataforma"}
+              </button>
             </form>
           )}
         </div>

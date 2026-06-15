@@ -11,7 +11,21 @@
     <title>Controle de Diarias TST</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="startup-status" style="padding:32px;font-family:Arial,sans-serif;text-align:center;color:#315267">
+        Carregando plataforma...
+      </div>
+    </div>
+    <script>
+      (function () {
+        window.setTimeout(function () {
+          var status = document.getElementById("startup-status");
+          if (status) {
+            status.innerHTML = "<strong>Não foi possível iniciar.</strong><br><br>Abra este endereço diretamente no Safari e atualize o iOS, se possível.";
+          }
+        }, 12000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

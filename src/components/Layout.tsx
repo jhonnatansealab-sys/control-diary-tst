@@ -36,7 +36,7 @@ export function Layout({ children, user, onLogout }: LayoutProps) {
   const [open, setOpen] = useState(false);
   const navItems = user.role === "financeiro"
     ? [{ to: "/registros", label: "Registros e relatórios", icon: ClipboardList }]
-    : user.role === "admin"
+    : user.role === "admin" || user.role === "supervisor"
       ? [...baseNav, { to: "/administracao", label: "Administracao", icon: Settings }]
       : baseNav;
 

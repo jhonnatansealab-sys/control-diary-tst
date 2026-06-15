@@ -52,10 +52,10 @@ function RecordSnapshot({ title, record, proposed = false }: { title: string; re
       <h3>{title}</h3>
       <dl>
         <div><dt>Data</dt><dd>{new Intl.DateTimeFormat("pt-BR").format(new Date(`${record.date}T12:00:00`))}</dd></div>
-        {record.turns.map((turn) => (
-          <div key={turn.shift}>
+        {record.turns.map((turn, index) => (
+          <div key={`${turn.shift}-${index}`}>
             <dt>{turn.shift}</dt>
-            <dd>{turn.activity} · {turn.vessels[0]}</dd>
+            <dd>{turn.activity} · {turn.vessels.join(", ")}</dd>
           </div>
         ))}
         <div><dt>Observações</dt><dd>{record.notes || "Sem observações"}</dd></div>

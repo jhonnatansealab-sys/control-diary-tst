@@ -29,7 +29,8 @@ export function NewDiary({
   onDismissPaymentWarning,
 }: NewDiaryProps) {
   const navigate = useNavigate();
-  const [date, setDate] = useState(localDate());
+  const today = localDate();
+  const [date, setDate] = useState(today);
   const [technician, setTechnician] = useState(
     user.role === "colaborador" ? user.name : settings.technicians[0],
   );
@@ -56,6 +57,10 @@ export function NewDiary({
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (user.role === "colaborador" && date > today) {
+      setError("Nao e permitido registrar diaria em uma data futura.");
+      return;
+    }
     if (!firstTurn.vessels.length || (hasDouble && !secondTurn.vessels.length)) {
       setError("Informe uma embarcação para cada turno.");
       return;
@@ -113,7 +118,13 @@ export function NewDiary({
           <div className="form-grid two-columns">
             <label className="field">
               <span>Data da diaria <b>*</b></span>
-              <input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
+              <input
+                type="date"
+                value={date}
+                max={user.role === "colaborador" ? today : undefined}
+                onChange={(event) => setDate(event.target.value)}
+                required
+              />
               <small>Preenchida automaticamente com a data de hoje.</small>
             </label>
             <label className="field">
