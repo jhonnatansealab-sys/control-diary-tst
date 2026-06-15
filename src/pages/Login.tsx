@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import sealabLogo from "../assets/sealab-logo.png";
 import { collaboratorLogin, managerLogin } from "../lib/api";
@@ -35,12 +35,24 @@ export function Login({ onLogin, settings }: LoginProps) {
   const [cameraActive, setCameraActive] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [processingPhoto, setProcessingPhoto] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     return () => stopCamera();
   }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!cameraActive || !video || !stream) return;
+
+    video.srcObject = stream;
+    void video.play().catch(() => {
+      setError("A prévia da câmera não abriu. Use a opção Tirar foto pelo celular.");
+    });
+  }, [cameraActive]);
 
   function stopCamera() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -76,14 +88,54 @@ export function Login({ onLogin, settings }: LoginProps) {
       });
       streamRef.current = stream;
       setCameraActive(true);
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play();
-        }
-      });
     } catch {
-      setError("Nao foi possivel acessar a camera. Autorize o uso e tente novamente.");
+      setError("Não foi possível acessar a câmera. Use a opção Tirar foto pelo celular.");
+    }
+  }
+
+  function resizePhoto(source: string) {
+    return new Promise<string>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        const size = Math.min(image.naturalWidth, image.naturalHeight);
+        const canvas = document.createElement("canvas");
+        canvas.width = 520;
+        canvas.height = 520;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Não foi possível processar a foto."));
+          return;
+        }
+        const sourceX = (image.naturalWidth - size) / 2;
+        const sourceY = (image.naturalHeight - size) / 2;
+        context.drawImage(image, sourceX, sourceY, size, size, 0, 0, 520, 520);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.onerror = () => reject(new Error("Formato de foto não suportado."));
+      image.src = source;
+    });
+  }
+
+  async function usePhotoFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setProcessingPhoto(true);
+    setError("");
+    stopCamera();
+    try {
+      const source = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Não foi possível ler a foto."));
+        reader.readAsDataURL(file);
+      });
+      setPhoto(await resizePhoto(source));
+    } catch (photoError) {
+      setError((photoError as Error).message);
+    } finally {
+      setProcessingPhoto(false);
     }
   }
 
@@ -235,7 +287,7 @@ export function Login({ onLogin, settings }: LoginProps) {
                   </div>
                 ) : cameraActive ? (
                   <div className="camera-preview">
-                    <video ref={videoRef} muted playsInline />
+                    <video ref={videoRef} autoPlay muted playsInline />
                     <div className="face-guide" />
                   </div>
                 ) : (
@@ -246,6 +298,15 @@ export function Login({ onLogin, settings }: LoginProps) {
                   </div>
                 )}
                 <div className="camera-actions">
+                  <input
+                    id="native-selfie-camera"
+                    className="native-camera-input"
+                    type="file"
+                    accept="image/*"
+                    capture="user"
+                    disabled={processingPhoto}
+                    onChange={usePhotoFile}
+                  />
                   {photo ? (
                     <button type="button" className="button button-secondary" onClick={() => setPhoto("")}>
                       <RotateCcw size={17} /> Tirar outra
@@ -255,9 +316,14 @@ export function Login({ onLogin, settings }: LoginProps) {
                       <Camera size={17} /> Capturar foto
                     </button>
                   ) : (
-                    <button type="button" className="button button-secondary" onClick={startCamera}>
-                      <Camera size={17} /> Abrir camera
-                    </button>
+                    <>
+                      <button type="button" className="button button-secondary" onClick={startCamera}>
+                        <Camera size={17} /> Abrir câmera
+                      </button>
+                      <label className={`button button-primary ${processingPhoto ? "disabled" : ""}`} htmlFor="native-selfie-camera">
+                        <Camera size={17} /> {processingPhoto ? "Processando..." : "Tirar foto pelo celular"}
+                      </label>
+                    </>
                   )}
                 </div>
               </div>

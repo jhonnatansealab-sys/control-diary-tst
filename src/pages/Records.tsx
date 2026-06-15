@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { StatusBadge } from "../components/StatusBadge";
 import { VesselSelect } from "../components/VesselSelect";
+import { cloneJson } from "../lib/compatibility";
 import type {
   Activity,
   AuthUser,
@@ -181,7 +182,7 @@ interface EditRecordModalProps {
 }
 
 function EditRecordModal({ record, vessels, onClose, onSubmit }: EditRecordModalProps) {
-  const [draft, setDraft] = useState<DiaryRecord>(() => structuredClone(record));
+  const [draft, setDraft] = useState<DiaryRecord>(() => cloneJson(record));
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
 
@@ -223,7 +224,7 @@ function EditRecordModal({ record, vessels, onClose, onSubmit }: EditRecordModal
       technician: record.technician,
       date: record.date,
       reason: reason.trim(),
-      originalRecord: structuredClone(record),
+      originalRecord: cloneJson(record),
       proposedRecord: { ...draft, status: "Solicitacao enviada" },
       status: "Pendente",
       createdAt: new Date().toISOString(),
