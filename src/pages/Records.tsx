@@ -152,8 +152,22 @@ export function Records({
             <Search size={18} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar técnico ou embarcação..." />
           </label>
-          <label className="date-filter"><span>De</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
-          <label className="date-filter"><span>Até</span><input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+          <label className="date-filter">
+            <span>Data inicial</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+            />
+          </label>
+          <label className="date-filter">
+            <span>Data final</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+            />
+          </label>
           <label className="filter-select">
             <Filter size={17} />
             <select value={shift} onChange={(event) => setShift(event.target.value)}>
@@ -162,7 +176,7 @@ export function Records({
           </label>
         </div>
         <div className="table-wrap">
-          <table>
+          <table className="records-table">
             <thead><tr><th>Data</th><th>Técnico</th><th>Atividade por turno</th><th>Embarcação por turno</th><th>Status</th><th /></tr></thead>
             <tbody>
               {filtered.map((record) => (
