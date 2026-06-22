@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   ClipboardList,
   FilePenLine,
   Gauge,
@@ -27,6 +28,7 @@ const baseNav = [
   { to: "/registros", label: "Registros", icon: ClipboardList },
   { to: "/solicitacoes", label: "Solicitacoes", icon: FilePenLine },
 ];
+const analyticsNav = { to: "/relatorios", label: "Metricas e BI", icon: BarChart3 };
 
 function initials(name: string) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
@@ -35,9 +37,12 @@ function initials(name: string) {
 export function Layout({ children, user, onLogout }: LayoutProps) {
   const [open, setOpen] = useState(false);
   const navItems = user.role === "financeiro"
-    ? [{ to: "/registros", label: "Registros e relatórios", icon: ClipboardList }]
+    ? [
+        { to: "/registros", label: "Registros", icon: ClipboardList },
+        analyticsNav,
+      ]
     : user.role === "admin" || user.role === "supervisor"
-      ? [...baseNav, { to: "/administracao", label: "Administracao", icon: Settings }]
+      ? [...baseNav, analyticsNav, { to: "/administracao", label: "Administracao", icon: Settings }]
       : baseNav;
 
   return (
