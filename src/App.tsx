@@ -84,16 +84,29 @@ export default function App() {
     saveSession(null);
   }
 
-  async function addRecord(record: DiaryRecord) {
+  async function addRecord(record: DiaryRecord): Promise<string | null> {
+    if (
+      user?.role === "colaborador" &&
+      records.some(
+        (existing) =>
+          existing.technician === record.technician &&
+          existing.date === record.date,
+      )
+    ) {
+      return "Voce ja possui uma diaria registrada nesta data.";
+    }
     if (!isDemoMode && user) {
       try {
         await createRemoteRecord(user, record);
       } catch (error) {
-        setRemoteError((error as Error).message);
-        return;
+        const message = (error as Error).message;
+        setRemoteError(message);
+        return message;
       }
     }
     setRecords((current) => [record, ...current]);
+    setRemoteError("");
+    return null;
   }
 
   async function addRequest(request: EditRequest) {
@@ -219,6 +232,7 @@ export default function App() {
               : (
                 <NewDiary
                   user={user}
+                  records={records}
                   settings={settings}
                   onSave={addRecord}
                   showPaymentWarning={showPaymentWarning}
