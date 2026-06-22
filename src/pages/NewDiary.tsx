@@ -6,8 +6,9 @@ import type { Activity, AuthUser, DiaryRecord, Shift, SystemSettings, TurnEntry 
 
 interface NewDiaryProps {
   user: AuthUser;
+  records: DiaryRecord[];
   settings: SystemSettings;
-  onSave: (record: DiaryRecord) => void;
+  onSave: (record: DiaryRecord) => Promise<string | null>;
   showPaymentWarning: boolean;
   onDismissPaymentWarning: () => void;
 }
@@ -23,6 +24,7 @@ const emptyTurn: TurnEntry = { shift: "Diurno", activity: "Area", vessels: [] };
 
 export function NewDiary({
   user,
+  records,
   settings,
   onSave,
   showPaymentWarning,
@@ -43,6 +45,14 @@ export function NewDiary({
   });
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const existingRecord = user.role === "colaborador"
+    ? records.find(
+        (record) =>
+          record.technician === user.name &&
+          record.date === date,
+      )
+    : undefined;
 
   function updateFirst(patch: Partial<TurnEntry>) {
     const next = { ...firstTurn, ...patch };
@@ -55,10 +65,14 @@ export function NewDiary({
     }
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (user.role === "colaborador" && date > today) {
       setError("Nao e permitido registrar diaria em uma data futura.");
+      return;
+    }
+    if (existingRecord) {
+      setError("Voce ja possui uma diaria registrada nesta data.");
       return;
     }
     if (!firstTurn.vessels.length || (hasDouble && !secondTurn.vessels.length)) {
@@ -76,7 +90,14 @@ export function NewDiary({
       createdAt: new Date().toISOString(),
       selfieSessionId: user.selfieSessionId,
     };
-    onSave(record);
+    setSaving(true);
+    setError("");
+    const saveError = await onSave(record);
+    if (saveError) {
+      setError(saveError);
+      setSaving(false);
+      return;
+    }
     navigate("/registros", { state: { saved: true } });
   }
 
@@ -204,14 +225,27 @@ export function NewDiary({
           </label>
         </section>
 
-        {error && <div className="error-banner"><AlertCircle size={18} /> {error}</div>}
+        {existingRecord && (
+          <div className="error-banner">
+            <AlertCircle size={18} />
+            Voce ja registrou uma diaria para esta data. Para corrigir dados, utilize
+            a opcao de solicitar edicao no historico.
+          </div>
+        )}
+        {error && !existingRecord && (
+          <div className="error-banner"><AlertCircle size={18} /> {error}</div>
+        )}
 
         <div className="form-actions">
           <button type="button" className="button button-secondary" onClick={() => navigate(-1)}>
             Cancelar
           </button>
-          <button type="submit" className="button button-primary">
-            <Save size={18} /> Salvar diaria
+          <button
+            type="submit"
+            className="button button-primary"
+            disabled={saving || Boolean(existingRecord)}
+          >
+            <Save size={18} /> {saving ? "Salvando..." : "Salvar diaria"}
           </button>
         </div>
       </form>

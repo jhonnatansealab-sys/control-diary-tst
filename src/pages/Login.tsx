@@ -167,7 +167,7 @@ export function Login({ onLogin, settings }: LoginProps) {
       if (!isDemoMode) {
         const { user } = await managerLogin(role, username, password);
         onLogin(user);
-        navigate(role === "financeiro" ? "/registros" : "/");
+        navigate(role === "financeiro" ? "/relatorios" : "/");
         return;
       }
       const expected = settings.accessAccounts.find(
@@ -182,7 +182,7 @@ export function Login({ onLogin, settings }: LoginProps) {
         return;
       }
       onLogin({ role, name: expected.name, username });
-      navigate(role === "financeiro" ? "/registros" : "/");
+      navigate(role === "financeiro" ? "/relatorios" : "/");
     } catch (submitError) {
       setError((submitError as Error).message);
     } finally {

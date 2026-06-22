@@ -23,6 +23,7 @@ import {
 } from "./lib/storage";
 import { isDemoMode } from "./lib/supabase";
 import { Admin } from "./pages/Admin";
+import { Analytics } from "./pages/Analytics";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
 import { NewDiary } from "./pages/NewDiary";
@@ -84,16 +85,29 @@ export default function App() {
     saveSession(null);
   }
 
-  async function addRecord(record: DiaryRecord) {
+  async function addRecord(record: DiaryRecord): Promise<string | null> {
+    if (
+      user?.role === "colaborador" &&
+      records.some(
+        (existing) =>
+          existing.technician === record.technician &&
+          existing.date === record.date,
+      )
+    ) {
+      return "Voce ja possui uma diaria registrada nesta data.";
+    }
     if (!isDemoMode && user) {
       try {
         await createRemoteRecord(user, record);
       } catch (error) {
-        setRemoteError((error as Error).message);
-        return;
+        const message = (error as Error).message;
+        setRemoteError(message);
+        return message;
       }
     }
     setRecords((current) => [record, ...current]);
+    setRemoteError("");
+    return null;
   }
 
   async function addRequest(request: EditRequest) {
@@ -210,7 +224,7 @@ export default function App() {
     <Layout user={user} onLogout={logout}>
       {remoteError && <div className="error-banner remote-error-banner">{remoteError}</div>}
       <Routes>
-        <Route path="/" element={user.role === "financeiro" ? <Navigate to="/registros" replace /> : <Dashboard user={user} records={records} requests={requests} />} />
+        <Route path="/" element={user.role === "financeiro" ? <Navigate to="/relatorios" replace /> : <Dashboard user={user} records={records} requests={requests} />} />
         <Route
           path="/novo"
           element={
@@ -219,6 +233,7 @@ export default function App() {
               : (
                 <NewDiary
                   user={user}
+                  records={records}
                   settings={settings}
                   onSave={addRecord}
                   showPaymentWarning={showPaymentWarning}
@@ -241,6 +256,14 @@ export default function App() {
           }
         />
         <Route path="/solicitacoes" element={user.role === "financeiro" ? <Navigate to="/registros" replace /> : <Requests user={user} requests={requests} onStatusChange={updateRequest} />} />
+        <Route
+          path="/relatorios"
+          element={
+            ["financeiro", "supervisor", "admin"].includes(user.role)
+              ? <Analytics records={records} settings={settings} />
+              : <Navigate to="/" replace />
+          }
+        />
         <Route path="/administracao" element={["supervisor", "admin"].includes(user.role) ? <Admin user={user} settings={settings} onSettingsChange={changeSettings} /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
