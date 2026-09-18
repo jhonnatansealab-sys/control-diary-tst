@@ -2,21 +2,13 @@ import {
   Activity,
   BarChart3,
   CalendarDays,
-  Download,
-  FileSpreadsheet,
   Filter,
   RefreshCw,
   Ship,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  dateRange,
-  downloadBlob,
-  flattenActivityFacts,
-  toCsv,
-  type ActivityFact,
-} from "../lib/analytics";
+import { flattenActivityFacts, type ActivityFact } from "../lib/analytics";
 import type { DiaryRecord, SystemSettings } from "../types";
 
 interface AnalyticsProps {
@@ -35,10 +27,6 @@ function countBy(rows: ActivityFact[], key: keyof ActivityFact) {
     .sort((a, b) => b.value - a.value);
 }
 
-function excelDate(value: string) {
-  return new Date(`${value}T12:00:00`);
-}
-
 export function Analytics({ records, settings }: AnalyticsProps) {
   const sortedDates = useMemo(
     () => records.map((record) => record.date).sort(),
@@ -51,7 +39,6 @@ export function Analytics({ records, settings }: AnalyticsProps) {
   const [technician, setTechnician] = useState("");
   const [vessel, setVessel] = useState("");
   const [activity, setActivity] = useState("");
-  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!startDate && minDate) setStartDate(minDate);
@@ -111,184 +98,13 @@ export function Analytics({ records, settings }: AnalyticsProps) {
     setActivity("");
   }
 
-  function exportCsv() {
-    downloadBlob(
-      new Blob([`\uFEFF${toCsv(filteredFacts)}`], { type: "text/csv;charset=utf-8" }),
-      `fato-atividades-power-bi-${startDate}-a-${endDate}.csv`,
-    );
-  }
-
-  async function exportPowerBi() {
-    setExporting(true);
-    try {
-      const ExcelJS = await import("exceljs");
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = "Controle de Diarias TST";
-      workbook.created = new Date();
-
-      const factDiary = workbook.addWorksheet("FatoDiarias");
-      factDiary.columns = [
-        { header: "IdRegistro", key: "id", width: 20 },
-        { header: "Data", key: "date", width: 13 },
-        { header: "Tecnico", key: "technician", width: 38 },
-        { header: "QuantidadeTurnos", key: "turns", width: 18 },
-        { header: "Dobra", key: "double", width: 10 },
-        { header: "Status", key: "status", width: 22 },
-        { header: "Observacoes", key: "notes", width: 50 },
-        { header: "CriadoEm", key: "createdAt", width: 22 },
-      ];
-      filteredRecords.forEach((record) => factDiary.addRow({
-        id: record.id,
-        date: excelDate(record.date),
-        technician: record.technician,
-        turns: record.turns.length,
-        double: record.turns.length === 2 ? "Sim" : "Nao",
-        status: record.status,
-        notes: record.notes,
-        createdAt: new Date(record.createdAt),
-      }));
-
-      const factActivity = workbook.addWorksheet("FatoAtividades");
-      factActivity.columns = [
-        { header: "IdAtividade", key: "activityId", width: 28 },
-        { header: "IdRegistro", key: "recordId", width: 20 },
-        { header: "Data", key: "date", width: 13 },
-        { header: "Ano", key: "year", width: 10 },
-        { header: "MesNumero", key: "monthNumber", width: 12 },
-        { header: "Mes", key: "month", width: 14 },
-        { header: "AnoMes", key: "yearMonth", width: 12 },
-        { header: "Tecnico", key: "technician", width: 38 },
-        { header: "Turno", key: "shift", width: 14 },
-        { header: "Atividade", key: "activity", width: 18 },
-        { header: "Embarcacao", key: "vessel", width: 28 },
-        { header: "Dobra", key: "doubleShift", width: 10 },
-        { header: "Status", key: "status", width: 22 },
-        { header: "Observacoes", key: "notes", width: 50 },
-        { header: "CriadoEm", key: "createdAt", width: 22 },
-      ];
-      filteredFacts.forEach((fact) => factActivity.addRow({
-        ...fact,
-        date: excelDate(fact.date),
-        createdAt: new Date(fact.createdAt),
-      }));
-
-      const calendar = workbook.addWorksheet("DimCalendario");
-      calendar.columns = [
-        { header: "Data", key: "date", width: 13 },
-        { header: "Ano", key: "year", width: 10 },
-        { header: "Trimestre", key: "quarter", width: 12 },
-        { header: "MesNumero", key: "monthNumber", width: 12 },
-        { header: "Mes", key: "month", width: 14 },
-        { header: "AnoMes", key: "yearMonth", width: 12 },
-        { header: "Dia", key: "day", width: 10 },
-        { header: "DiaSemana", key: "weekday", width: 16 },
-      ];
-      dateRange(startDate || minDate, endDate || maxDate).forEach((value) => {
-        const date = excelDate(value);
-        calendar.addRow({
-          date,
-          year: date.getFullYear(),
-          quarter: `T${Math.floor(date.getMonth() / 3) + 1}`,
-          monthNumber: date.getMonth() + 1,
-          month: new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(date),
-          yearMonth: value.slice(0, 7),
-          day: date.getDate(),
-          weekday: new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(date),
-        });
-      });
-
-      const technicianDim = workbook.addWorksheet("DimTecnicos");
-      technicianDim.columns = [
-        { header: "Tecnico", key: "technician", width: 38 },
-        { header: "DiariasPeriodo", key: "diaries", width: 18 },
-        { header: "AtendimentosPeriodo", key: "activities", width: 20 },
-      ];
-      settings.technicians.forEach((name) => {
-        const technicianFacts = filteredFacts.filter((fact) => fact.technician === name);
-        technicianDim.addRow({
-          technician: name,
-          diaries: new Set(technicianFacts.map((fact) => fact.recordId)).size,
-          activities: technicianFacts.length,
-        });
-      });
-
-      const vesselDim = workbook.addWorksheet("DimEmbarcacoes");
-      vesselDim.columns = [
-        { header: "Embarcacao", key: "vessel", width: 30 },
-        { header: "AtendimentosPeriodo", key: "activities", width: 20 },
-      ];
-      settings.vessels.forEach((name) => vesselDim.addRow({
-        vessel: name,
-        activities: filteredFacts.filter((fact) => fact.vessel === name).length,
-      }));
-
-      const summary = workbook.addWorksheet("Resumo");
-      summary.addRows([
-        ["MODELO PARA POWER BI - CONTROLE DE DIARIAS TST"],
-        ["Periodo inicial", startDate],
-        ["Periodo final", endDate],
-        ["Diarias", filteredRecords.length],
-        ["Atendimentos", filteredFacts.length],
-        ["Tecnicos ativos", activeTechnicians],
-        ["Dobras", doubles],
-        ["Percentual operacional", operationalRate / 100],
-        [],
-        ["Relacionamentos sugeridos"],
-        ["FatoAtividades[IdRegistro]", "FatoDiarias[IdRegistro]"],
-        ["FatoAtividades[Data]", "DimCalendario[Data]"],
-        ["FatoAtividades[Tecnico]", "DimTecnicos[Tecnico]"],
-        ["FatoAtividades[Embarcacao]", "DimEmbarcacoes[Embarcacao]"],
-      ]);
-      summary.getCell("B8").numFmt = "0%";
-
-      [factDiary, factActivity, calendar, technicianDim, vesselDim].forEach((sheet) => {
-        sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-        sheet.getRow(1).fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FF3734B7" },
-        };
-        sheet.autoFilter = {
-          from: { row: 1, column: 1 },
-          to: { row: 1, column: sheet.columnCount },
-        };
-        sheet.views = [{ state: "frozen", ySplit: 1 }];
-        const dateColumn = sheet.columns.find((column) => column.key === "date");
-        if (dateColumn) dateColumn.numFmt = "dd/mm/yyyy";
-        const createdColumn = sheet.columns.find((column) => column.key === "createdAt");
-        if (createdColumn) createdColumn.numFmt = "dd/mm/yyyy hh:mm";
-      });
-      summary.getColumn(1).width = 42;
-      summary.getColumn(2).width = 28;
-      summary.getRow(1).font = { bold: true, size: 15, color: { argb: "FF3734B7" } };
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      downloadBlob(
-        new Blob([buffer], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        }),
-        `modelo-power-bi-tst-${startDate}-a-${endDate}.xlsx`,
-      );
-    } finally {
-      setExporting(false);
-    }
-  }
-
   return (
     <>
       <section className="page-heading heading-with-action bi-heading">
         <div>
           <span className="eyebrow">INTELIGENCIA OPERACIONAL</span>
-          <h1>Metricas e Power BI</h1>
-          <p>Visualize os indicadores online e exporte um modelo de dados pronto para analise.</p>
-        </div>
-        <div className="bi-export-actions">
-          <button className="button button-secondary" onClick={exportCsv} disabled={!filteredFacts.length}>
-            <Download size={18} /> CSV
-          </button>
-          <button className="button button-primary" onClick={exportPowerBi} disabled={exporting || !filteredFacts.length}>
-            <FileSpreadsheet size={18} /> {exporting ? "Gerando..." : "Exportar Power BI"}
-          </button>
+          <h1>Metricas</h1>
+          <p>Visualize os indicadores online e acompanhe a operacao por periodo, tecnico, embarcacao e atividade.</p>
         </div>
       </section>
 
