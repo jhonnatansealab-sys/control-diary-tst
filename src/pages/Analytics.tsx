@@ -2,6 +2,7 @@ import {
   Activity,
   BarChart3,
   CalendarDays,
+  FileSpreadsheet,
   Filter,
   RefreshCw,
   Ship,
@@ -27,6 +28,10 @@ function countBy(rows: ActivityFact[], key: keyof ActivityFact) {
     .sort((a, b) => b.value - a.value);
 }
 
+function excelDate(value: string) {
+  return new Date(`${value}T12:00:00`);
+}
+
 export function Analytics({ records, settings }: AnalyticsProps) {
   const sortedDates = useMemo(
     () => records.map((record) => record.date).sort(),
@@ -39,6 +44,7 @@ export function Analytics({ records, settings }: AnalyticsProps) {
   const [technician, setTechnician] = useState("");
   const [vessel, setVessel] = useState("");
   const [activity, setActivity] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!startDate && minDate) setStartDate(minDate);
@@ -98,6 +104,112 @@ export function Analytics({ records, settings }: AnalyticsProps) {
     setActivity("");
   }
 
+  async function exportReport() {
+    setExporting(true);
+    try {
+      const ExcelJS = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Controle de Diarias TST";
+      workbook.created = new Date();
+
+      const summary = workbook.addWorksheet("Resumo");
+      summary.addRows([
+        ["RELATORIO DE METRICAS - CONTROLE DE DIARIAS TST"],
+        ["Periodo inicial", startDate || "Todos"],
+        ["Periodo final", endDate || "Todos"],
+        ["Tecnico", technician || "Todos"],
+        ["Embarcacao", vessel || "Todas"],
+        ["Atividade", activity || "Todas"],
+        ["Diarias", filteredRecords.length],
+        ["Atendimentos", filteredFacts.length],
+        ["Tecnicos ativos", activeTechnicians],
+        ["Dobras", doubles],
+        ["Percentual operacional", operationalRate / 100],
+      ]);
+      summary.getColumn(1).width = 30;
+      summary.getColumn(2).width = 32;
+      summary.getRow(1).font = { bold: true, size: 15, color: { argb: "FF3734B7" } };
+      summary.getCell("B11").numFmt = "0%";
+
+      const recordsSheet = workbook.addWorksheet("Registros");
+      recordsSheet.columns = [
+        { header: "IdRegistro", key: "id", width: 22 },
+        { header: "Data", key: "date", width: 13 },
+        { header: "Tecnico", key: "technician", width: 38 },
+        { header: "QuantidadeTurnos", key: "turns", width: 18 },
+        { header: "Dobra", key: "double", width: 10 },
+        { header: "Status", key: "status", width: 22 },
+        { header: "Observacoes", key: "notes", width: 50 },
+        { header: "CriadoEm", key: "createdAt", width: 22 },
+      ];
+      filteredRecords.forEach((record) => recordsSheet.addRow({
+        id: record.id,
+        date: excelDate(record.date),
+        technician: record.technician,
+        turns: record.turns.length,
+        double: record.turns.length === 2 ? "Sim" : "Nao",
+        status: record.status,
+        notes: record.notes,
+        createdAt: new Date(record.createdAt),
+      }));
+
+      const activitiesSheet = workbook.addWorksheet("Atividades");
+      activitiesSheet.columns = [
+        { header: "IdAtividade", key: "activityId", width: 28 },
+        { header: "IdRegistro", key: "recordId", width: 22 },
+        { header: "Data", key: "date", width: 13 },
+        { header: "Ano", key: "year", width: 10 },
+        { header: "MesNumero", key: "monthNumber", width: 12 },
+        { header: "Mes", key: "month", width: 14 },
+        { header: "AnoMes", key: "yearMonth", width: 12 },
+        { header: "Tecnico", key: "technician", width: 38 },
+        { header: "Turno", key: "shift", width: 14 },
+        { header: "Atividade", key: "activity", width: 18 },
+        { header: "Embarcacao", key: "vessel", width: 28 },
+        { header: "Dobra", key: "doubleShift", width: 10 },
+        { header: "Status", key: "status", width: 22 },
+        { header: "Observacoes", key: "notes", width: 50 },
+        { header: "CriadoEm", key: "createdAt", width: 22 },
+      ];
+      filteredFacts.forEach((fact) => activitiesSheet.addRow({
+        ...fact,
+        date: excelDate(fact.date),
+        createdAt: new Date(fact.createdAt),
+      }));
+
+      [recordsSheet, activitiesSheet].forEach((sheet) => {
+        sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        sheet.getRow(1).fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF3734B7" },
+        };
+        sheet.autoFilter = {
+          from: { row: 1, column: 1 },
+          to: { row: 1, column: sheet.columnCount },
+        };
+        sheet.views = [{ state: "frozen", ySplit: 1 }];
+        const dateColumn = sheet.columns.find((column) => column.key === "date");
+        if (dateColumn) dateColumn.numFmt = "dd/mm/yyyy";
+        const createdColumn = sheet.columns.find((column) => column.key === "createdAt");
+        if (createdColumn) createdColumn.numFmt = "dd/mm/yyyy hh:mm";
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `relatorio-metricas-tst-${startDate || "inicio"}-a-${endDate || "fim"}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <section className="page-heading heading-with-action bi-heading">
@@ -105,6 +217,11 @@ export function Analytics({ records, settings }: AnalyticsProps) {
           <span className="eyebrow">INTELIGENCIA OPERACIONAL</span>
           <h1>Metricas</h1>
           <p>Visualize os indicadores online e acompanhe a operacao por periodo, tecnico, embarcacao e atividade.</p>
+        </div>
+        <div className="report-export-actions">
+          <button className="button button-primary" onClick={exportReport} disabled={exporting || !filteredFacts.length}>
+            <FileSpreadsheet size={18} /> {exporting ? "Gerando..." : "Exportar relatorio"}
+          </button>
         </div>
       </section>
 
