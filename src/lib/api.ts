@@ -136,10 +136,11 @@ export async function updateRemoteScheduleStatus(
   user: AuthUser,
   id: string,
   status: ScheduleStatus,
+  observation: string,
 ) {
   return request<{ scheduleRecord: ScheduleRecord }>(
     "schedule-status",
-    { method: "PATCH", body: JSON.stringify({ id, status }) },
+    { method: "PATCH", body: JSON.stringify({ id, status, observation }) },
     user.sessionToken,
   );
 }

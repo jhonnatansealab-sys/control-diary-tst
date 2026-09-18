@@ -3,11 +3,14 @@ import {
   CheckCircle2,
   Clock,
   Eye,
+  History,
+  MessageSquare,
   Pencil,
   Phone,
   Plus,
   Search,
   Ship,
+  SlidersHorizontal,
   Trash2,
   UserRound,
   X,
@@ -16,6 +19,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import type {
   AuthUser,
   ScheduleContact,
+  ScheduleChangeLog,
   ScheduleProgramTurn,
   ScheduleRecord,
   ScheduleServiceType,
@@ -29,10 +33,17 @@ interface ScheduleProps {
   records: ScheduleRecord[];
   onCreate: (record: ScheduleRecord) => Promise<boolean>;
   onUpdate: (record: ScheduleRecord) => Promise<boolean>;
-  onStatusChange: (id: string, status: ScheduleStatus) => Promise<boolean>;
+  onStatusChange: (id: string, status: ScheduleStatus, observation: string) => Promise<boolean>;
 }
 
 type ScheduleDraft = Omit<ScheduleRecord, "id" | "createdAt" | "createdBy">;
+type ScheduleFilters = {
+  status: ScheduleStatus | "Todos";
+  vessel: string;
+  serviceType: ScheduleServiceType | "Todos";
+  from: string;
+  to: string;
+};
 
 const statuses: ScheduleStatus[] = ["Programado", "Em andamento", "Concluído", "Cancelado"];
 const serviceTypes: ScheduleServiceType[] = ["Operacional", "DOC&CON"];
@@ -115,6 +126,72 @@ function statusClass(status: ScheduleStatus) {
   return `schedule-status-${normalizeText(status).replace(/\s+/g, "-")}`;
 }
 
+function scheduleSnapshot(record: ScheduleRecord) {
+  return {
+    vessel: record.vessel,
+    scheduledAt: record.scheduledAt,
+    osNumber: record.osNumber,
+    serviceType: record.serviceType,
+    status: record.status,
+    dayTsts: record.dayTsts.map((item) => ({ ...item })),
+    nightTsts: record.nightTsts.map((item) => ({ ...item })),
+    cboSupports: record.cboSupports.map((item) => ({ ...item })),
+    programs: record.programs.map((item) => ({ ...item })),
+  };
+}
+
+function listNames(list: ScheduleContact[]) {
+  return list.map((person) => person.name).filter(Boolean).join(", ") || "nenhum";
+}
+
+function peopleSignature(list: ScheduleContact[]) {
+  return list.map((person) => `${person.name}|${person.contact}`).sort().join(";");
+}
+
+function programsSignature(list: ScheduleProgramTurn[]) {
+  return list.map((program) => `${program.shift}|${program.timeRange}`).sort().join(";");
+}
+
+function summarizePeopleChange(label: string, before: ScheduleContact[], after: ScheduleContact[]) {
+  if (peopleSignature(before) === peopleSignature(after)) return "";
+  return `${label}: antes ${listNames(before)}; depois ${listNames(after)}.`;
+}
+
+function summarizeScheduleChanges(before: ScheduleRecord, after: ScheduleRecord) {
+  const changes = [
+    before.osNumber !== after.osNumber ? `OS alterada de ${before.osNumber} para ${after.osNumber}.` : "",
+    before.vessel !== after.vessel ? `Embarcação alterada de ${before.vessel} para ${after.vessel}.` : "",
+    before.scheduledAt !== after.scheduledAt ? `Data alterada de ${formatDateTime(before.scheduledAt)} para ${formatDateTime(after.scheduledAt)}.` : "",
+    before.serviceType !== after.serviceType ? `Tipo alterado de ${before.serviceType} para ${after.serviceType}.` : "",
+    before.status !== after.status ? `Status alterado de ${before.status} para ${after.status}.` : "",
+    summarizePeopleChange("TSTs diurnos", before.dayTsts, after.dayTsts),
+    summarizePeopleChange("TSTs noturnos", before.nightTsts, after.nightTsts),
+    summarizePeopleChange("Suporte CBO", before.cboSupports, after.cboSupports),
+    programsSignature(before.programs) !== programsSignature(after.programs) ? "Programação de atendimento alterada." : "",
+  ].filter(Boolean);
+  return changes.join(" ") || "Registro salvo sem diferença detectável nos campos principais.";
+}
+
+function createScheduleLog(
+  type: ScheduleChangeLog["type"],
+  summary: string,
+  observation: string,
+  changedBy: string,
+  after: ScheduleRecord,
+  before?: ScheduleRecord,
+): ScheduleChangeLog {
+  return {
+    id: `LOG-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+    type,
+    summary,
+    observation: observation.trim(),
+    changedAt: new Date().toISOString(),
+    changedBy,
+    before: before ? scheduleSnapshot(before) : undefined,
+    after: scheduleSnapshot(after),
+  };
+}
+
 function validContacts(list: ScheduleContact[]) {
   return list
     .map((contact) => ({ ...contact, name: contact.name.trim(), contact: contact.contact.trim() }))
@@ -144,17 +221,31 @@ function validateDraft(draft: ScheduleDraft) {
 export function Schedule({ user, settings, records, onCreate, onUpdate, onStatusChange }: ScheduleProps) {
   const canManage = user.role === "admin" || user.role === "supervisor";
   const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<ScheduleFilters>({
+    status: "Todos",
+    vessel: "Todas",
+    serviceType: "Todos",
+    from: "",
+    to: "",
+  });
   const [draft, setDraft] = useState<ScheduleDraft>(() => emptyDraft(settings.vessels));
   const [editingRecord, setEditingRecord] = useState<ScheduleRecord | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<ScheduleRecord | null>(null);
+  const [editObservation, setEditObservation] = useState("");
+  const [pendingStatus, setPendingStatus] = useState<{ record: ScheduleRecord; status: ScheduleStatus; observation: string } | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const filteredRecords = useMemo(() => {
     const term = normalizeText(query.trim());
-    if (!term) return records;
     return records.filter((record) => {
+      if (filters.status !== "Todos" && record.status !== filters.status) return false;
+      if (filters.vessel !== "Todas" && record.vessel !== filters.vessel) return false;
+      if (filters.serviceType !== "Todos" && record.serviceType !== filters.serviceType) return false;
+      if (filters.from && record.scheduledAt.slice(0, 10) < filters.from) return false;
+      if (filters.to && record.scheduledAt.slice(0, 10) > filters.to) return false;
+      if (!term) return true;
       const searchable = normalizeText([
         record.osNumber,
         record.vessel,
@@ -163,10 +254,11 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
         formatDateTime(record.scheduledAt),
         record.programs.map((program) => `${program.shift} ${program.timeRange}`).join(" "),
         [...record.dayTsts, ...record.nightTsts, ...record.cboSupports].map((person) => `${person.name} ${person.contact}`).join(" "),
+        (record.changeHistory ?? []).map((log) => `${log.type} ${log.summary} ${log.observation} ${log.changedBy}`).join(" "),
       ].join(" "));
       return searchable.includes(term);
     });
-  }, [query, records]);
+  }, [filters, query, records]);
 
   const grouped = useMemo(
     () => statuses.map((status) => ({
@@ -182,6 +274,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
     setDraft(emptyDraft(settings.vessels));
     setEditingRecord(null);
     setSelectedRecord(null);
+    setEditObservation("");
     setError("");
     setFormOpen(true);
   }
@@ -190,6 +283,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
     setDraft(cloneDraft(record));
     setEditingRecord(record);
     setSelectedRecord(null);
+    setEditObservation("");
     setError("");
     setFormOpen(true);
   }
@@ -199,6 +293,10 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
     const validation = validateDraft(draft);
     setError(validation);
     if (validation) return;
+    if (editingRecord && !editObservation.trim()) {
+      setError("Informe a observação/motivo da edição para manter o histórico completo.");
+      return;
+    }
 
     const nextDraft = {
       ...draft,
@@ -209,14 +307,38 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
       osNumber: draft.osNumber.trim(),
     };
     setSaving(true);
-    const saved = editingRecord
-      ? await onUpdate({ ...editingRecord, ...nextDraft })
-      : await onCreate({
-          id: `AGD-${Date.now()}`,
-          ...nextDraft,
-          createdAt: new Date().toISOString(),
-          createdBy: user.name,
-        });
+    let recordToSave: ScheduleRecord;
+    if (editingRecord) {
+      recordToSave = { ...editingRecord, ...nextDraft };
+      recordToSave = {
+        ...recordToSave,
+        changeHistory: [
+          ...(editingRecord.changeHistory ?? []),
+          createScheduleLog(
+            "Edição",
+            summarizeScheduleChanges(editingRecord, recordToSave),
+            editObservation,
+            user.name,
+            recordToSave,
+            editingRecord,
+          ),
+        ],
+      };
+    } else {
+      recordToSave = {
+        id: `AGD-${Date.now()}`,
+        ...nextDraft,
+        createdAt: new Date().toISOString(),
+        createdBy: user.name,
+      };
+      recordToSave = {
+        ...recordToSave,
+        changeHistory: [
+          createScheduleLog("Criação", "Programação criada.", "Registro inicial da programação.", user.name, recordToSave),
+        ],
+      };
+    }
+    const saved = editingRecord ? await onUpdate(recordToSave) : await onCreate(recordToSave);
     setSaving(false);
     if (!saved) {
       setError("Não foi possível salvar a programação.");
@@ -224,6 +346,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
     }
     setFormOpen(false);
     setEditingRecord(null);
+    setEditObservation("");
     setDraft(emptyDraft(settings.vessels));
   }
 
@@ -243,6 +366,14 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
           <Search size={17} />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Pesquisar OS, embarcação, TST, suporte ou horário" />
         </label>
+        <div className="schedule-filter-controls">
+          <label><span><SlidersHorizontal size={13} /> Status</span><select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as ScheduleFilters["status"] }))}><option>Todos</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select></label>
+          <label><span>Embarcação</span><select value={filters.vessel} onChange={(event) => setFilters((current) => ({ ...current, vessel: event.target.value }))}><option>Todas</option>{settings.vessels.map((vessel) => <option key={vessel}>{vessel}</option>)}</select></label>
+          <label><span>Tipo</span><select value={filters.serviceType} onChange={(event) => setFilters((current) => ({ ...current, serviceType: event.target.value as ScheduleFilters["serviceType"] }))}><option>Todos</option>{serviceTypes.map((serviceType) => <option key={serviceType}>{serviceType}</option>)}</select></label>
+          <label><span>De</span><input type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></label>
+          <label><span>Até</span><input type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></label>
+          <button className="button button-secondary schedule-clear-filters" type="button" onClick={() => { setQuery(""); setFilters({ status: "Todos", vessel: "Todas", serviceType: "Todos", from: "", to: "" }); }}>Limpar filtros</button>
+        </div>
         <span>{filteredRecords.length} de {records.length} programações exibidas</span>
       </section>
 
@@ -260,7 +391,11 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
                   record={record}
                   canManage={canManage}
                   onOpen={() => setSelectedRecord(record)}
-                  onStatusChange={onStatusChange}
+                  onStatusChange={(nextStatus) => {
+                    if (nextStatus !== record.status) {
+                      setPendingStatus({ record, status: nextStatus, observation: "" });
+                    }
+                  }}
                 />
               ))}
               {!column.records.length && <div className="schedule-empty">Nenhum agendamento.</div>}
@@ -285,9 +420,27 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
           error={error}
           saving={saving}
           editing={!!editingRecord}
+          observation={editObservation}
           onDraftChange={setDraft}
+          onObservationChange={setEditObservation}
           onClose={() => setFormOpen(false)}
           onSubmit={submit}
+        />
+      )}
+
+      {pendingStatus && (
+        <StatusObservationModal
+          pending={pendingStatus}
+          saving={saving}
+          onChange={(observation) => setPendingStatus((current) => current ? { ...current, observation } : current)}
+          onClose={() => setPendingStatus(null)}
+          onConfirm={async () => {
+            if (!pendingStatus.observation.trim()) return;
+            setSaving(true);
+            const saved = await onStatusChange(pendingStatus.record.id, pendingStatus.status, pendingStatus.observation);
+            setSaving(false);
+            if (saved) setPendingStatus(null);
+          }}
         />
       )}
     </>
@@ -303,7 +456,7 @@ function ScheduleCard({
   record: ScheduleRecord;
   canManage: boolean;
   onOpen: () => void;
-  onStatusChange: (id: string, status: ScheduleStatus) => Promise<boolean>;
+  onStatusChange: (status: ScheduleStatus) => void;
 }) {
   return (
     <article className="schedule-card compact-schedule-card" onClick={onOpen}>
@@ -320,7 +473,7 @@ function ScheduleCard({
       {canManage && (
         <label className="schedule-status-select" onClick={(event) => event.stopPropagation()}>
           <span>Status</span>
-          <select value={record.status} onChange={(event) => onStatusChange(record.id, event.target.value as ScheduleStatus)}>
+          <select value={record.status} onChange={(event) => onStatusChange(event.target.value as ScheduleStatus)}>
             {statuses.map((status) => <option key={status}>{status}</option>)}
           </select>
         </label>
@@ -361,12 +514,69 @@ function ScheduleDetailsModal({
           <PeopleBlock title="TSTs noturnos" people={record.nightTsts} tone="night" />
           <PeopleBlock title="Suporte da CBO" people={record.cboSupports} tone="support" />
         </div>
+        <ScheduleHistory history={record.changeHistory ?? []} />
         <div className="form-actions">
           {canManage && <button className="button button-primary" onClick={onEdit}><Pencil size={17} /> Editar</button>}
           <button className="button button-secondary" onClick={onClose}>Fechar</button>
         </div>
       </section>
     </div>
+  );
+}
+
+function StatusObservationModal({
+  pending,
+  saving,
+  onChange,
+  onClose,
+  onConfirm,
+}: {
+  pending: { record: ScheduleRecord; status: ScheduleStatus; observation: string };
+  saving: boolean;
+  onChange: (observation: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="modal-backdrop">
+      <section className="modal schedule-status-modal">
+        <div className="modal-header">
+          <div>
+            <span className="eyebrow">MUDANÇA DE STATUS</span>
+            <h2>{pending.record.osNumber}</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose}><X size={20} /></button>
+        </div>
+        <p>Informe o motivo para alterar de <strong>{pending.record.status}</strong> para <strong>{pending.status}</strong>. Esta observação ficará gravada no histórico.</p>
+        <label className="field schedule-observation-field">
+          <span>Observação</span>
+          <textarea value={pending.observation} onChange={(event) => onChange(event.target.value)} placeholder="Ex.: troca solicitada pela operação, programação cancelada, atendimento iniciado..." />
+        </label>
+        <div className="form-actions">
+          <button className="button button-secondary" type="button" onClick={onClose}>Cancelar</button>
+          <button className="button button-primary" type="button" disabled={saving || !pending.observation.trim()} onClick={onConfirm}>{saving ? "Salvando..." : "Confirmar mudança"}</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ScheduleHistory({ history }: { history: ScheduleChangeLog[] }) {
+  const ordered = [...history].sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+  return (
+    <section className="schedule-history">
+      <h3><History size={16} /> Histórico de mudanças</h3>
+      {ordered.length ? ordered.map((log) => (
+        <article key={log.id}>
+          <header>
+            <strong>{log.type}</strong>
+            <span>{formatDateTime(log.changedAt)} por {log.changedBy}</span>
+          </header>
+          <p>{log.summary}</p>
+          <blockquote><MessageSquare size={14} /> {log.observation || "Sem observação informada."}</blockquote>
+        </article>
+      )) : <div className="schedule-empty">Nenhuma mudança registrada até agora.</div>}
+    </section>
   );
 }
 
@@ -394,7 +604,9 @@ function ScheduleFormModal({
   error,
   saving,
   editing,
+  observation,
   onDraftChange,
+  onObservationChange,
   onClose,
   onSubmit,
 }: {
@@ -403,7 +615,9 @@ function ScheduleFormModal({
   error: string;
   saving: boolean;
   editing: boolean;
+  observation: string;
   onDraftChange: (draft: ScheduleDraft) => void;
+  onObservationChange: (value: string) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent) => void;
 }) {
@@ -458,6 +672,12 @@ function ScheduleFormModal({
           <ContactGroup title="TSTs diurnos" options={settings.technicians} contacts={draft.dayTsts} onAdd={() => addContact("dayTsts", "day")} onRemove={(id) => removeContact("dayTsts", id)} onChange={(id, patch) => updateContact("dayTsts", id, patch)} />
           <ContactGroup title="TSTs noturnos" options={settings.technicians} contacts={draft.nightTsts} onAdd={() => addContact("nightTsts", "night")} onRemove={(id) => removeContact("nightTsts", id)} onChange={(id, patch) => updateContact("nightTsts", id, patch)} />
           <ContactGroup title="Suporte da CBO" contacts={draft.cboSupports} onAdd={() => addContact("cboSupports", "cbo")} onRemove={(id) => removeContact("cboSupports", id)} onChange={(id, patch) => updateContact("cboSupports", id, patch)} />
+          {editing && (
+            <label className="field schedule-observation-field">
+              <span>Observação da mudança</span>
+              <textarea value={observation} onChange={(event) => onObservationChange(event.target.value)} placeholder="Explique se houve edição, exclusão ou troca de TST e o motivo da alteração." />
+            </label>
+          )}
           <div className="schedule-program-card">
             <strong>Programação de atendimento</strong>
             {(["Diurno", "Noturno"] as const).map((shift) => {

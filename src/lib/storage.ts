@@ -48,7 +48,10 @@ export function saveRequests(requests: EditRequest[]) {
 }
 
 export function loadScheduleRecords(): ScheduleRecord[] {
-  return read(SCHEDULE_KEY, demoScheduleRecords);
+  return read(SCHEDULE_KEY, demoScheduleRecords).map((record) => ({
+    ...record,
+    changeHistory: record.changeHistory ?? [],
+  }));
 }
 
 export function saveScheduleRecords(records: ScheduleRecord[]) {

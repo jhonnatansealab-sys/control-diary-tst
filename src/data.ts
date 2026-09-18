@@ -145,6 +145,7 @@ export const demoScheduleRecords: ScheduleRecord[] = [
     ],
     createdAt: "2026-06-22T12:00:00",
     createdBy: "Coordenador",
+    changeHistory: [],
   },
 ];
 

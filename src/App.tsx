@@ -35,7 +35,41 @@ import { NewDiary } from "./pages/NewDiary";
 import { Schedule } from "./pages/Schedule";
 import { Records } from "./pages/Records";
 import { Requests } from "./pages/Requests";
-import type { AuthUser, DiaryRecord, EditRequest, ScheduleRecord, ScheduleStatus } from "./types";
+import type { AuthUser, DiaryRecord, EditRequest, ScheduleChangeLog, ScheduleRecord, ScheduleStatus } from "./types";
+
+function scheduleSnapshot(record: ScheduleRecord) {
+  return {
+    vessel: record.vessel,
+    scheduledAt: record.scheduledAt,
+    osNumber: record.osNumber,
+    serviceType: record.serviceType,
+    status: record.status,
+    dayTsts: record.dayTsts.map((item) => ({ ...item })),
+    nightTsts: record.nightTsts.map((item) => ({ ...item })),
+    cboSupports: record.cboSupports.map((item) => ({ ...item })),
+    programs: record.programs.map((item) => ({ ...item })),
+  };
+}
+
+function createScheduleChangeLog(
+  type: ScheduleChangeLog["type"],
+  summary: string,
+  observation: string,
+  changedBy: string,
+  after: ScheduleRecord,
+  before?: ScheduleRecord,
+): ScheduleChangeLog {
+  return {
+    id: `LOG-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+    type,
+    summary,
+    observation: observation.trim(),
+    changedAt: new Date().toISOString(),
+    changedBy,
+    before: before ? scheduleSnapshot(before) : undefined,
+    after: scheduleSnapshot(after),
+  };
+}
 
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(loadSessionFromBrowser);
@@ -217,7 +251,8 @@ export default function App() {
     if (!user || !["supervisor", "admin"].includes(user.role)) return false;
     if (!isDemoMode) {
       try {
-        await createRemoteScheduleRecord(user, scheduleRecord);
+        const response = await createRemoteScheduleRecord(user, scheduleRecord);
+        scheduleRecord = { ...response.scheduleRecord, changeHistory: response.scheduleRecord.changeHistory ?? [] };
         setRemoteError("");
       } catch (error) {
         setRemoteError((error as Error).message);
@@ -228,15 +263,29 @@ export default function App() {
     return true;
   }
 
-  async function changeScheduleStatus(id: string, status: ScheduleStatus) {
+  async function changeScheduleStatus(id: string, status: ScheduleStatus, observation: string) {
     if (!user || !["supervisor", "admin"].includes(user.role)) return false;
-    let nextRecord = scheduleRecords.find((record) => record.id === id);
-    if (!nextRecord) return false;
-    nextRecord = { ...nextRecord, status };
+    const currentRecord = scheduleRecords.find((record) => record.id === id);
+    if (!currentRecord) return false;
+    let nextRecord: ScheduleRecord = {
+      ...currentRecord,
+      status,
+      changeHistory: [
+        ...(currentRecord.changeHistory ?? []),
+        createScheduleChangeLog(
+          "Status",
+          `Status alterado de ${currentRecord.status} para ${status}.`,
+          observation,
+          user.name,
+          { ...currentRecord, status },
+          currentRecord,
+        ),
+      ],
+    };
     if (!isDemoMode) {
       try {
-        const response = await updateRemoteScheduleStatus(user, id, status);
-        nextRecord = response.scheduleRecord;
+        const response = await updateRemoteScheduleStatus(user, id, status, observation);
+        nextRecord = { ...response.scheduleRecord, changeHistory: response.scheduleRecord.changeHistory ?? [] };
         setRemoteError("");
       } catch (error) {
         setRemoteError((error as Error).message);
@@ -253,7 +302,7 @@ export default function App() {
     if (!isDemoMode) {
       try {
         const response = await updateRemoteScheduleRecord(user, scheduleRecord);
-        nextRecord = response.scheduleRecord;
+        nextRecord = { ...response.scheduleRecord, changeHistory: response.scheduleRecord.changeHistory ?? [] };
         setRemoteError("");
       } catch (error) {
         setRemoteError((error as Error).message);

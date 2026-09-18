@@ -77,6 +77,29 @@ export interface ScheduleProgramTurn {
   timeRange: string;
 }
 
+export interface ScheduleChangeSnapshot {
+  vessel: string;
+  scheduledAt: string;
+  osNumber: string;
+  serviceType: ScheduleServiceType;
+  status: ScheduleStatus;
+  dayTsts: ScheduleContact[];
+  nightTsts: ScheduleContact[];
+  cboSupports: ScheduleContact[];
+  programs: ScheduleProgramTurn[];
+}
+
+export interface ScheduleChangeLog {
+  id: string;
+  type: "Criação" | "Edição" | "Status";
+  summary: string;
+  observation: string;
+  changedAt: string;
+  changedBy: string;
+  before?: ScheduleChangeSnapshot;
+  after: ScheduleChangeSnapshot;
+}
+
 export interface ScheduleRecord {
   id: string;
   vessel: string;
@@ -90,4 +113,5 @@ export interface ScheduleRecord {
   programs: ScheduleProgramTurn[];
   createdAt: string;
   createdBy: string;
+  changeHistory?: ScheduleChangeLog[];
 }

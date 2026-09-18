@@ -155,6 +155,40 @@ interface ScheduleInput {
   programs?: ScheduleProgramInput[];
 }
 
+function scheduleSnapshot(record: ScheduleInput) {
+  return {
+    vessel: record.vessel,
+    scheduledAt: record.scheduledAt,
+    osNumber: record.osNumber,
+    serviceType: record.serviceType,
+    status: record.status,
+    dayTsts: record.dayTsts ?? [],
+    nightTsts: record.nightTsts ?? [],
+    cboSupports: record.cboSupports ?? [],
+    programs: record.programs ?? [],
+  };
+}
+
+function createScheduleLog(
+  type: "Criação" | "Edição" | "Status",
+  summary: string,
+  observation: string,
+  changedBy: string,
+  after: ScheduleInput,
+  before?: ScheduleInput,
+) {
+  return {
+    id: `LOG-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+    type,
+    summary,
+    observation: observation.trim(),
+    changedAt: new Date().toISOString(),
+    changedBy,
+    before: before ? scheduleSnapshot(before) : undefined,
+    after: scheduleSnapshot(after),
+  };
+}
+
 function isValidRecord(record: RecordInput | null | undefined) {
   if (
     !record?.id ||
@@ -452,10 +486,13 @@ Deno.serve(async (request) => {
     }
 
     if (request.method === "PATCH" && action === "schedule-status") {
-      await requireSession(request, ["supervisor", "admin"]);
+      const session = await requireSession(request, ["supervisor", "admin"]);
       const body = await readBody(request);
       if (!body.id || !["Programado", "Em andamento", "Concluído", "Cancelado"].includes(body.status)) {
         return json({ error: "Status de agendamento invalido." }, 400);
+      }
+      if (!body.observation?.trim()) {
+        return json({ error: "Informe a observacao da mudanca de status." }, 400);
       }
       const { data: stored, error: findError } = await supabase
         .from("app_schedule_records")
@@ -464,7 +501,22 @@ Deno.serve(async (request) => {
         .maybeSingle();
       if (findError) throw findError;
       if (!stored) return json({ error: "Agendamento nao encontrado." }, 404);
-      const scheduleRecord = { ...stored.payload, status: body.status };
+      const beforeRecord = stored.payload as ScheduleInput & { changeHistory?: unknown[] };
+      const scheduleRecord = {
+        ...beforeRecord,
+        status: body.status,
+        changeHistory: [
+          ...(Array.isArray(beforeRecord.changeHistory) ? beforeRecord.changeHistory : []),
+          createScheduleLog(
+            "Status",
+            `Status alterado de ${beforeRecord.status} para ${body.status}.`,
+            body.observation,
+            session.name,
+            { ...beforeRecord, status: body.status },
+            beforeRecord,
+          ),
+        ],
+      };
       const { error } = await supabase
         .from("app_schedule_records")
         .update({
