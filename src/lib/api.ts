@@ -3,6 +3,8 @@ import type {
   DiaryRecord,
   EditRequest,
   Role,
+  ScheduleRecord,
+  ScheduleStatus,
   SelfieRecord,
   SystemSettings,
 } from "../types";
@@ -11,6 +13,7 @@ import { supabasePublishableKey, supabaseUrl } from "./supabase";
 interface RemoteState {
   records: DiaryRecord[];
   requests: EditRequest[];
+  scheduleRecords: ScheduleRecord[];
   settings: SystemSettings;
 }
 
@@ -109,6 +112,35 @@ export async function createRemoteRequest(user: AuthUser, editRequest: EditReque
   return request<{ request: EditRequest }>(
     "request",
     { method: "POST", body: JSON.stringify({ request: editRequest }) },
+    user.sessionToken,
+  );
+}
+
+export async function createRemoteScheduleRecord(user: AuthUser, scheduleRecord: ScheduleRecord) {
+  return request<{ scheduleRecord: ScheduleRecord }>(
+    "schedule",
+    { method: "POST", body: JSON.stringify({ scheduleRecord }) },
+    user.sessionToken,
+  );
+}
+
+export async function updateRemoteScheduleRecord(user: AuthUser, scheduleRecord: ScheduleRecord) {
+  return request<{ scheduleRecord: ScheduleRecord }>(
+    "schedule",
+    { method: "PATCH", body: JSON.stringify({ scheduleRecord }) },
+    user.sessionToken,
+  );
+}
+
+export async function updateRemoteScheduleStatus(
+  user: AuthUser,
+  id: string,
+  status: ScheduleStatus,
+  observation: string,
+) {
+  return request<{ scheduleRecord: ScheduleRecord }>(
+    "schedule-status",
+    { method: "PATCH", body: JSON.stringify({ id, status, observation }) },
     user.sessionToken,
   );
 }

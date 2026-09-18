@@ -1,6 +1,7 @@
 import {
   BarChart3,
   ClipboardList,
+  CalendarClock,
   FilePenLine,
   Gauge,
   LogOut,
@@ -29,6 +30,7 @@ const baseNav = [
   { to: "/solicitacoes", label: "Solicitacoes", icon: FilePenLine },
 ];
 const analyticsNav = { to: "/relatorios", label: "Metricas", icon: BarChart3 };
+const scheduleNav = { to: "/programacao", label: "Programacao", icon: CalendarClock };
 
 function initials(name: string) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
@@ -40,9 +42,10 @@ export function Layout({ children, user, onLogout }: LayoutProps) {
     ? [
         { to: "/registros", label: "Registros", icon: ClipboardList },
         analyticsNav,
+        scheduleNav,
       ]
     : user.role === "admin" || user.role === "supervisor"
-      ? [...baseNav, analyticsNav, { to: "/administracao", label: "Administracao", icon: Settings }]
+      ? [...baseNav, scheduleNav, analyticsNav, { to: "/administracao", label: "Administracao", icon: Settings }]
       : baseNav;
 
   return (
