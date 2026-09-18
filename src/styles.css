@@ -321,6 +321,7 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
 .empty-state svg { margin-bottom: 9px; color: #9eb0b8; }
 .empty-state strong { color: #506873; font-size: 12px; }
 .empty-state span { margin-top: 5px; font-size: 9px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
 .payment-warning-backdrop {
   position: fixed; inset: 0; z-index: 80; display: grid; place-items: center;
   padding: 22px; background: rgba(7, 24, 37, .78); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
@@ -392,12 +393,18 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
 .admin-card b { grid-column: 2; color: var(--teal); font-size: 9px; }
 .admin-card.selected { border-color: #60b7b4; box-shadow: inset 0 0 0 1px #60b7b4; background: #f4fbfa; }
 .management-panel { margin-bottom: 20px; }
+.management-tools { display: flex; gap: 10px; padding: 16px 20px; border-bottom: 1px solid #e5ecef; background: #fbfdfd; }
+.management-tools .search-field { max-width: none; }
+.management-tools .filter-select { width: 210px; flex: 0 0 auto; }
+.management-results-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 20px; border-bottom: 1px solid #e5ecef; color: #78909c; font-size: 9px; font-weight: 700; }
+.management-results-summary strong { color: #ad5757; text-align: right; }
 .management-add, .account-form { display: flex; gap: 8px; padding: 16px 20px; border-bottom: 1px solid #e5ecef; }
 .management-add input, .account-form input, .account-form select { min-height: 40px; flex: 1; padding: 0 11px; border: 1px solid #cedade; border-radius: 8px; outline: 0; font-size: 10px; background: white; }
 .management-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 20px; }
 .management-list > div { min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid #e0e8eb; border-radius: 8px; }
 .management-list > div > span:first-child { flex: 1; color: #3d5664; font-size: 10px; }
 .management-list button { display: grid; place-items: center; padding: 5px; border: 0; color: #ad5757; background: transparent; }
+.compact-empty { padding: 26px 20px 34px; border-top: 1px solid #eef3f5; }
 .access-list { grid-template-columns: 1fr; }
 .access-list strong, .access-list small { display: block; }
 .access-list small { margin-top: 2px; color: #81939c; font-size: 8px; }
@@ -488,6 +495,9 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
   .form-card { padding: 18px; }
   .request-grid, .admin-grid, .catalog-grid { grid-template-columns: 1fr; }
   .comparison-grid, .management-list { grid-template-columns: 1fr; }
+  .management-tools, .management-results-summary { flex-direction: column; align-items: stretch; }
+  .management-tools .filter-select { width: 100%; }
+  .management-results-summary strong { text-align: left; }
   .account-form { flex-direction: column; }
   .selfie-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filter-bar { flex-direction: column; }
