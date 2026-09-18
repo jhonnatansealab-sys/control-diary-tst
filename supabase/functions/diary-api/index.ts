@@ -132,6 +132,29 @@ interface TurnInput {
   vessels?: unknown[];
 }
 
+interface ScheduleContactInput {
+  name?: string;
+  contact?: string;
+}
+
+interface ScheduleProgramInput {
+  shift?: string;
+  timeRange?: string;
+}
+
+interface ScheduleInput {
+  id?: string;
+  vessel?: string;
+  scheduledAt?: string;
+  osNumber?: string;
+  serviceType?: string;
+  status?: string;
+  dayTsts?: ScheduleContactInput[];
+  nightTsts?: ScheduleContactInput[];
+  cboSupports?: ScheduleContactInput[];
+  programs?: ScheduleProgramInput[];
+}
+
 function isValidRecord(record: RecordInput | null | undefined) {
   if (
     !record?.id ||
@@ -154,6 +177,38 @@ function isValidRecord(record: RecordInput | null | undefined) {
     return false;
   }
   return record.turns.length !== 2 || record.turns[0].shift !== record.turns[1].shift;
+}
+
+function isValidPhone(value: string | undefined) {
+  return /^\(\d{2}\)\s\d{5}-\d{4}$/.test(value ?? "");
+}
+
+function isValidContactList(contacts: ScheduleContactInput[] | undefined) {
+  return Array.isArray(contacts) &&
+    contacts.every((contact) => !!contact?.name?.trim() && isValidPhone(contact.contact));
+}
+
+function isValidScheduleRecord(record: ScheduleInput | null | undefined) {
+  if (
+    !record?.id ||
+    !record?.vessel?.trim() ||
+    !record?.scheduledAt ||
+    !record?.osNumber?.trim() ||
+    !["Operacional", "DOC&CON"].includes(record.serviceType ?? "") ||
+    !["Programado", "Em andamento", "Concluído", "Cancelado"].includes(record.status ?? "") ||
+    !Array.isArray(record.programs) ||
+    !record.programs.length ||
+    record.programs.some((program) =>
+      !["Diurno", "Noturno"].includes(program?.shift ?? "") || !program?.timeRange?.trim()
+    )
+  ) {
+    return false;
+  }
+  const hasTst = !!record.dayTsts?.length || !!record.nightTsts?.length;
+  return hasTst &&
+    isValidContactList(record.dayTsts ?? []) &&
+    isValidContactList(record.nightTsts ?? []) &&
+    isValidContactList(record.cboSupports ?? []);
 }
 
 Deno.serve(async (request) => {
@@ -232,17 +287,28 @@ Deno.serve(async (request) => {
         .from("app_edit_requests")
         .select("payload")
         .order("created_at", { ascending: false });
+      const scheduleQuery = supabase
+        .from("app_schedule_records")
+        .select("payload")
+        .order("scheduled_at", { ascending: true });
       if (session.role === "colaborador") {
         recordsQuery = recordsQuery.eq("technician", session.name);
         requestsQuery = requestsQuery.eq("technician", session.name);
       }
-      const [{ data: records, error: recordsError }, { data: requests, error: requestsError }] =
-        await Promise.all([recordsQuery, requestsQuery]);
+      const [
+        { data: records, error: recordsError },
+        { data: requests, error: requestsError },
+        { data: scheduleRecords, error: scheduleError },
+      ] = await Promise.all([recordsQuery, requestsQuery, scheduleQuery]);
       if (recordsError) throw recordsError;
       if (requestsError) throw requestsError;
+      if (scheduleError) throw scheduleError;
       return json({
         records: (records ?? []).map((item) => item.payload),
         requests: (requests ?? []).map((item) => item.payload),
+        scheduleRecords: session.role === "colaborador"
+          ? []
+          : (scheduleRecords ?? []).map((item) => item.payload),
         settings: await getSettings(session.role === "admin"),
       });
     }
@@ -333,6 +399,52 @@ Deno.serve(async (request) => {
       if (requestError) throw requestError;
       if (recordError) throw recordError;
       return json({ request: editRequest });
+    }
+
+    if (request.method === "POST" && action === "schedule") {
+      const session = await requireSession(request, ["supervisor", "admin"]);
+      const body = await readBody(request);
+      const scheduleRecord = body.scheduleRecord;
+      if (!isValidScheduleRecord(scheduleRecord)) {
+        return json({ error: "Agendamento invalido." }, 400);
+      }
+      const { error } = await supabase.from("app_schedule_records").insert({
+        id: scheduleRecord.id,
+        scheduled_at: scheduleRecord.scheduledAt,
+        vessel: scheduleRecord.vessel,
+        os_number: scheduleRecord.osNumber,
+        status: scheduleRecord.status,
+        service_type: scheduleRecord.serviceType,
+        payload: { ...scheduleRecord, createdBy: scheduleRecord.createdBy || session.name },
+      });
+      if (error) throw error;
+      return json({ scheduleRecord: { ...scheduleRecord, createdBy: scheduleRecord.createdBy || session.name } }, 201);
+    }
+
+    if (request.method === "PATCH" && action === "schedule-status") {
+      await requireSession(request, ["supervisor", "admin"]);
+      const body = await readBody(request);
+      if (!body.id || !["Programado", "Em andamento", "Concluído", "Cancelado"].includes(body.status)) {
+        return json({ error: "Status de agendamento invalido." }, 400);
+      }
+      const { data: stored, error: findError } = await supabase
+        .from("app_schedule_records")
+        .select("payload")
+        .eq("id", body.id)
+        .maybeSingle();
+      if (findError) throw findError;
+      if (!stored) return json({ error: "Agendamento nao encontrado." }, 404);
+      const scheduleRecord = { ...stored.payload, status: body.status };
+      const { error } = await supabase
+        .from("app_schedule_records")
+        .update({
+          status: body.status,
+          payload: scheduleRecord,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", body.id);
+      if (error) throw error;
+      return json({ scheduleRecord });
     }
 
     if (request.method === "PATCH" && action === "record") {

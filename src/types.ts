@@ -3,6 +3,8 @@ export type Shift = "Diurno" | "Noturno" | "Não informado";
 export type Activity = "Area" | "ADM" | "Não informado";
 export type RecordStatus = "Registrado" | "Solicitacao enviada" | "Corrigido";
 export type RequestStatus = "Pendente" | "Aprovada" | "Rejeitada";
+export type ScheduleStatus = "Programado" | "Em andamento" | "Concluído" | "Cancelado";
+export type ScheduleServiceType = "Operacional" | "DOC&CON";
 
 export interface AuthUser {
   role: Role;
@@ -62,4 +64,30 @@ export interface EditRequest {
   proposedRecord: DiaryRecord;
   status: RequestStatus;
   createdAt: string;
+}
+
+export interface ScheduleContact {
+  id: string;
+  name: string;
+  contact: string;
+}
+
+export interface ScheduleProgramTurn {
+  shift: "Diurno" | "Noturno";
+  timeRange: string;
+}
+
+export interface ScheduleRecord {
+  id: string;
+  vessel: string;
+  scheduledAt: string;
+  osNumber: string;
+  serviceType: ScheduleServiceType;
+  status: ScheduleStatus;
+  dayTsts: ScheduleContact[];
+  nightTsts: ScheduleContact[];
+  cboSupports: ScheduleContact[];
+  programs: ScheduleProgramTurn[];
+  createdAt: string;
+  createdBy: string;
 }

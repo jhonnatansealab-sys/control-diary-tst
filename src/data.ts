@@ -1,4 +1,4 @@
-import type { DiaryRecord, EditRequest, SystemSettings } from "./types";
+import type { DiaryRecord, EditRequest, ScheduleRecord, SystemSettings } from "./types";
 
 export const initialTechnicians = [
   "Arthur Muller",
@@ -119,6 +119,32 @@ export const demoRequests: EditRequest[] = [
     },
     status: "Pendente",
     createdAt: "2026-06-11T09:10:00",
+  },
+];
+
+export const demoScheduleRecords: ScheduleRecord[] = [
+  {
+    id: "AGD-0001",
+    vessel: "SKANDI CARLA",
+    scheduledAt: "2026-06-23T07:00",
+    osNumber: "OS-CLIENTE-001",
+    serviceType: "Operacional",
+    status: "Programado",
+    dayTsts: [
+      { id: "day-1", name: "Leandro da Silva da Costa", contact: "(21) 99999-9999" },
+    ],
+    nightTsts: [
+      { id: "night-1", name: "Joyce de Oliveira Leite", contact: "(21) 98888-8888" },
+    ],
+    cboSupports: [
+      { id: "cbo-1", name: "Suporte CBO Exemplo", contact: "(21) 97777-7777" },
+    ],
+    programs: [
+      { shift: "Diurno", timeRange: "07:00-19:00HRS" },
+      { shift: "Noturno", timeRange: "19:00-07:00HRS" },
+    ],
+    createdAt: "2026-06-22T12:00:00",
+    createdBy: "Coordenador",
   },
 ];
 

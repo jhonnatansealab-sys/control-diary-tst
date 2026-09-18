@@ -4,20 +4,24 @@ import { Layout } from "./components/Layout";
 import {
   createRemoteRecord,
   createRemoteRequest,
+  createRemoteScheduleRecord,
   deleteRemoteRecord,
   fetchBootstrap,
   fetchRemoteState,
   updateRemoteRecord,
   updateRemoteRequest,
+  updateRemoteScheduleStatus,
   updateRemoteSettings,
 } from "./lib/api";
 import {
   loadRecords,
   loadRequests,
+  loadScheduleRecords,
   loadSessionFromBrowser,
   loadSettings,
   saveRecords,
   saveRequests,
+  saveScheduleRecords,
   saveSession,
   saveSettings,
 } from "./lib/storage";
@@ -27,15 +31,17 @@ import { Analytics } from "./pages/Analytics";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
 import { NewDiary } from "./pages/NewDiary";
+import { Schedule } from "./pages/Schedule";
 import { Records } from "./pages/Records";
 import { Requests } from "./pages/Requests";
-import type { AuthUser, DiaryRecord, EditRequest } from "./types";
+import type { AuthUser, DiaryRecord, EditRequest, ScheduleRecord, ScheduleStatus } from "./types";
 
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(loadSessionFromBrowser);
   const [showPaymentWarning, setShowPaymentWarning] = useState(false);
   const [records, setRecords] = useState<DiaryRecord[]>(isDemoMode ? loadRecords() : []);
   const [requests, setRequests] = useState<EditRequest[]>(isDemoMode ? loadRequests() : []);
+  const [scheduleRecords, setScheduleRecords] = useState<ScheduleRecord[]>(isDemoMode ? loadScheduleRecords() : []);
   const [settings, setSettings] = useState(loadSettings);
   const [remoteError, setRemoteError] = useState("");
 
@@ -46,6 +52,10 @@ export default function App() {
   useEffect(() => {
     if (isDemoMode) saveRequests(requests);
   }, [requests]);
+
+  useEffect(() => {
+    if (isDemoMode) saveScheduleRecords(scheduleRecords);
+  }, [scheduleRecords]);
 
   useEffect(() => {
     if (isDemoMode) saveSettings(settings);
@@ -64,6 +74,7 @@ export default function App() {
       .then((state) => {
         setRecords(state.records);
         setRequests(state.requests);
+        setScheduleRecords(state.scheduleRecords ?? []);
         setSettings(state.settings);
         setRemoteError("");
       })
@@ -201,6 +212,40 @@ export default function App() {
     }
   }
 
+  async function addScheduleRecord(scheduleRecord: ScheduleRecord) {
+    if (!user || !["supervisor", "admin"].includes(user.role)) return false;
+    if (!isDemoMode) {
+      try {
+        await createRemoteScheduleRecord(user, scheduleRecord);
+        setRemoteError("");
+      } catch (error) {
+        setRemoteError((error as Error).message);
+        return false;
+      }
+    }
+    setScheduleRecords((current) => [scheduleRecord, ...current]);
+    return true;
+  }
+
+  async function changeScheduleStatus(id: string, status: ScheduleStatus) {
+    if (!user || !["supervisor", "admin"].includes(user.role)) return false;
+    let nextRecord = scheduleRecords.find((record) => record.id === id);
+    if (!nextRecord) return false;
+    nextRecord = { ...nextRecord, status };
+    if (!isDemoMode) {
+      try {
+        const response = await updateRemoteScheduleStatus(user, id, status);
+        nextRecord = response.scheduleRecord;
+        setRemoteError("");
+      } catch (error) {
+        setRemoteError((error as Error).message);
+        return false;
+      }
+    }
+    setScheduleRecords((current) => current.map((record) => (record.id === id ? nextRecord : record)));
+    return true;
+  }
+
   async function changeSettings(nextSettings: typeof settings) {
     if (!isDemoMode && user) {
       try {
@@ -261,6 +306,22 @@ export default function App() {
           element={
             ["financeiro", "supervisor", "admin"].includes(user.role)
               ? <Analytics records={records} settings={settings} />
+              : <Navigate to="/" replace />
+          }
+        />
+        <Route
+          path="/programacao"
+          element={
+            ["financeiro", "supervisor", "admin"].includes(user.role)
+              ? (
+                <Schedule
+                  user={user}
+                  settings={settings}
+                  records={scheduleRecords}
+                  onCreate={addScheduleRecord}
+                  onStatusChange={changeScheduleStatus}
+                />
+              )
               : <Navigate to="/" replace />
           }
         />

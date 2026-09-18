@@ -462,6 +462,48 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
 .ranking-list strong { color: #26475a; font-size: 10px; text-align: right; }
 .bi-empty { min-height: 180px; display: grid; place-items: center; color: #8a9aa2; font-size: 10px; text-align: center; }
 
+.schedule-layout { display: grid; grid-template-columns: minmax(360px, 430px) 1fr; gap: 18px; align-items: start; }
+.schedule-form-panel { overflow: hidden; }
+.schedule-form-body { display: grid; gap: 18px; padding: 20px; }
+.schedule-error { margin: 16px 20px 0; }
+.schedule-contact-group { display: grid; gap: 9px; padding: 14px; border: 1px solid #e3eaee; border-radius: 10px; background: #fbfdfd; }
+.schedule-contact-group > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.schedule-contact-group strong { color: #29495c; font-size: 11px; }
+.schedule-contact-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(135px, .8fr) 32px; gap: 8px; }
+.schedule-contact-row input, .schedule-contact-row select, .program-row input {
+  min-width: 0; height: 39px; padding: 0 10px; border: 1px solid #cedade; border-radius: 8px; color: #263f4f; background: white; outline: 0; font-size: 10px;
+}
+.schedule-contact-row button { display: grid; place-items: center; border: 0; border-radius: 8px; color: #ad5757; background: #fff1f1; }
+.schedule-program-card { display: grid; gap: 10px; padding: 14px; border: 1px solid #e3eaee; border-radius: 10px; background: #fbfdfd; }
+.schedule-program-card > strong { color: #29495c; font-size: 11px; }
+.program-row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; }
+.program-row label { display: flex; align-items: center; gap: 7px; color: #415866; font-size: 10px; font-weight: 700; }
+.program-row input:disabled { color: #9cacb4; background: #f1f5f6; }
+.schedule-board { min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 13px; overflow-x: auto; padding-bottom: 6px; }
+.schedule-column { min-width: 220px; border: 1px solid var(--border); border-radius: 13px; background: #f8fafb; }
+.schedule-column header { display: flex; align-items: center; justify-content: space-between; padding: 14px 15px; border-bottom: 1px solid #e2e9ec; }
+.schedule-column header strong { color: #29495c; font: 800 12px Manrope, sans-serif; }
+.schedule-column header span { min-width: 24px; height: 24px; display: grid; place-items: center; border-radius: 99px; color: #3734b7; background: #ecebff; font-size: 9px; font-weight: 800; }
+.schedule-cards { display: grid; gap: 10px; padding: 12px; }
+.schedule-card { padding: 13px; border: 1px solid #e0e8eb; border-radius: 10px; background: white; box-shadow: 0 3px 12px rgba(25,61,86,.04); }
+.schedule-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.schedule-card-top small { color: #7c8f98; font-size: 8px; font-weight: 800; }
+.schedule-status { display: inline-flex; padding: 5px 8px; border-radius: 99px; font-size: 8px; font-weight: 800; }
+.schedule-status-programado { color: #275f94; background: #e5f1fb; }
+.schedule-status-em-andamento { color: #9a6b10; background: #fff1d2; }
+.schedule-status-concluido { color: #287368; background: #e2f3ef; }
+.schedule-status-cancelado { color: #a24646; background: #f9dfdf; }
+.schedule-card h3 { margin: 12px 0 10px; color: #193d56; font: 800 13px Manrope, sans-serif; }
+.schedule-card dl { display: grid; gap: 8px; margin: 0; }
+.schedule-card dl div { display: grid; gap: 3px; }
+.schedule-card dt { display: flex; align-items: center; gap: 5px; color: #7d9099; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.schedule-card dt svg { color: var(--teal); }
+.schedule-card dd { margin: 0; color: #405967; font-size: 10px; line-height: 1.45; }
+.schedule-status-select { display: grid; gap: 5px; margin-top: 12px; padding-top: 11px; border-top: 1px solid #edf1f3; }
+.schedule-status-select span { color: #7d9099; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.schedule-status-select select { height: 35px; padding: 0 9px; border: 1px solid #cedade; border-radius: 8px; color: #263f4f; background: white; font-size: 10px; }
+.schedule-empty { min-height: 70px; display: grid; place-items: center; padding: 12px; border: 1px dashed #d3dee2; border-radius: 9px; color: #90a0a8; font-size: 10px; text-align: center; }
+
 @media (max-width: 1050px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .record-row { grid-template-columns: 52px 1.2fr 1fr; }
@@ -469,6 +511,7 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
   .catalog-grid { grid-template-columns: repeat(2, 1fr); }
   .bi-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .bi-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .schedule-layout { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -522,6 +565,7 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
   .report-export-actions .button { width: 100%; padding: 0 12px; font-size: 10px; }
   .bi-filters { grid-template-columns: 1fr 1fr; }
   .bi-dashboard-grid { grid-template-columns: 1fr; }
+  .schedule-contact-row, .program-row { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 800px) {
