@@ -1,5 +1,5 @@
-import { Camera, Plus, Ship, Trash2, UserCog, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Camera, Filter, Plus, Search, Ship, Trash2, UserCog, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { deleteRemoteSelfie, fetchRemoteSelfies } from "../lib/api";
 import { loadSelfies, saveSelfies } from "../lib/storage";
 import { isDemoMode } from "../lib/supabase";
@@ -12,10 +12,32 @@ interface AdminProps {
 }
 
 type AdminSection = "technicians" | "vessels" | "access";
+type ManagementFilter = "all" | "contains" | "exact" | "possibleDuplicates" | "supervisor" | "financeiro" | "admin" | "active" | "inactive";
+
+function normalizeSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function duplicateKeys(values: string[]) {
+  const counts = new Map<string, number>();
+  values.forEach((value) => {
+    const key = normalizeSearch(value);
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([key]) => key));
+}
 
 export function Admin({ user, settings, onSettingsChange }: AdminProps) {
   const [section, setSection] = useState<AdminSection>("technicians");
   const [newItem, setNewItem] = useState("");
+  const [managementSearch, setManagementSearch] = useState("");
+  const [managementFilter, setManagementFilter] = useState<ManagementFilter>("all");
+  const [managementMessage, setManagementMessage] = useState("");
   const [selfies, setSelfies] = useState<SelfieRecord[]>(loadSelfies);
   const [account, setAccount] = useState({ name: "", username: "", password: "", role: "supervisor" as Exclude<Role, "colaborador"> });
   const [selfieError, setSelfieError] = useState("");
@@ -28,15 +50,32 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
       .catch((error: Error) => setSelfieError(error.message));
   }, [isSystemAdmin, user]);
 
+  useEffect(() => {
+    setManagementSearch("");
+    setManagementFilter("all");
+    setManagementMessage("");
+    setNewItem("");
+  }, [section]);
+
   function addCatalogItem() {
     const value = newItem.trim();
     if (!value) return;
     if (section === "technicians") {
+      if (settings.technicians.some((item) => normalizeSearch(item) === normalizeSearch(value))) {
+        setManagementMessage("Este técnico já parece estar cadastrado. Use a busca para conferir antes de adicionar novamente.");
+        return;
+      }
       onSettingsChange({ ...settings, technicians: [...new Set([...settings.technicians, value])].sort() });
     } else if (section === "vessels") {
-      onSettingsChange({ ...settings, vessels: [...new Set([...settings.vessels, value.toUpperCase()])].sort() });
+      const vesselName = value.toUpperCase();
+      if (settings.vessels.some((item) => normalizeSearch(item) === normalizeSearch(vesselName))) {
+        setManagementMessage("Esta embarcação já parece estar cadastrada. Use a busca para conferir antes de adicionar novamente.");
+        return;
+      }
+      onSettingsChange({ ...settings, vessels: [...new Set([...settings.vessels, vesselName])].sort() });
     }
     setNewItem("");
+    setManagementMessage("");
   }
 
   function removeCatalogItem(value: string) {
@@ -49,9 +88,14 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
 
   function addAccount() {
     if (!account.name.trim() || !account.username.trim() || !account.password) return;
+    if (settings.accessAccounts.some((item) => normalizeSearch(item.username) === normalizeSearch(account.username))) {
+      setManagementMessage("Já existe uma conta com este usuário. Use a busca para conferir antes de adicionar novamente.");
+      return;
+    }
     const next: AccessAccount = { ...account, id: `access-${Date.now()}`, active: true };
     onSettingsChange({ ...settings, accessAccounts: [...settings.accessAccounts, next] });
     setAccount({ name: "", username: "", password: "", role: "supervisor" });
+    setManagementMessage("");
   }
 
   async function deleteSelfie(id: string) {
@@ -70,6 +114,43 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
   }
 
   const catalog = section === "technicians" ? settings.technicians : settings.vessels;
+  const normalizedSearch = normalizeSearch(managementSearch);
+  const catalogDuplicateKeys = useMemo(() => duplicateKeys(catalog), [catalog]);
+  const filteredCatalog = useMemo(
+    () => catalog.filter((item) => {
+      const normalizedItem = normalizeSearch(item);
+      const matchesSearch = !normalizedSearch || normalizedItem.includes(normalizedSearch);
+      const matchesFilter =
+        managementFilter === "all" ||
+        managementFilter === "contains" ||
+        (managementFilter === "exact" && !!normalizedSearch && normalizedItem === normalizedSearch) ||
+        (managementFilter === "possibleDuplicates" && catalogDuplicateKeys.has(normalizedItem));
+
+      return matchesSearch && matchesFilter;
+    }),
+    [catalog, catalogDuplicateKeys, managementFilter, normalizedSearch],
+  );
+  const filteredAccounts = useMemo(
+    () => settings.accessAccounts.filter((item) => {
+      const searchable = normalizeSearch(`${item.name} ${item.username} ${item.role} ${item.active ? "ativo" : "inativo"}`);
+      const matchesSearch = !normalizedSearch || searchable.includes(normalizedSearch);
+      const matchesFilter =
+        managementFilter === "all" ||
+        item.role === managementFilter ||
+        (managementFilter === "active" && item.active) ||
+        (managementFilter === "inactive" && !item.active);
+
+      return matchesSearch && matchesFilter;
+    }),
+    [managementFilter, normalizedSearch, settings.accessAccounts],
+  );
+  const visibleCount = section === "access" ? filteredAccounts.length : filteredCatalog.length;
+  const totalCount = section === "access" ? settings.accessAccounts.length : catalog.length;
+  const searchPlaceholder = section === "technicians"
+    ? "Pesquisar técnico cadastrado"
+    : section === "vessels"
+      ? "Pesquisar embarcação cadastrada"
+      : "Pesquisar nome, usuário ou perfil";
 
   return (
     <>
@@ -96,6 +177,38 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
         <div className="panel-header">
           <div><h2>{section === "technicians" ? "Técnicos" : section === "vessels" ? "Embarcações" : "Contas de acesso"}</h2><p>As alterações são aplicadas imediatamente aos formulários e ao login.</p></div>
         </div>
+        <div className="management-tools">
+          <label className="search-field">
+            <Search size={17} />
+            <span className="sr-only">Barra de pesquisa</span>
+            <input value={managementSearch} onChange={(event) => setManagementSearch(event.target.value)} placeholder={searchPlaceholder} />
+          </label>
+          <label className="filter-select">
+            <Filter size={17} />
+            <select value={managementFilter} onChange={(event) => setManagementFilter(event.target.value as ManagementFilter)}>
+              <option value="all">Todos</option>
+              {section !== "access" ? (
+                <>
+                  <option value="contains">Contém o termo</option>
+                  <option value="exact">Coincidência exata</option>
+                  <option value="possibleDuplicates">Possiveis duplicados</option>
+                </>
+              ) : (
+                <>
+                  <option value="supervisor">Supervisores</option>
+                  <option value="financeiro">Financeiro</option>
+                  <option value="admin">Administradores</option>
+                  <option value="active">Ativos</option>
+                  <option value="inactive">Inativos</option>
+                </>
+              )}
+            </select>
+          </label>
+        </div>
+        <div className="management-results-summary">
+          <span>{visibleCount} de {totalCount} itens exibidos</span>
+          {managementMessage && <strong>{managementMessage}</strong>}
+        </div>
         {section !== "access" ? (
           <>
             <div className="management-add">
@@ -103,8 +216,9 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
               <button className="button button-primary" onClick={addCatalogItem}><Plus size={17} /> Adicionar</button>
             </div>
             <div className="management-list">
-              {catalog.map((item) => <div key={item}><span>{item}</span><button onClick={() => removeCatalogItem(item)} aria-label={`Remover ${item}`}><Trash2 size={16} /></button></div>)}
+              {filteredCatalog.map((item) => <div key={item}><span>{item}</span><button onClick={() => removeCatalogItem(item)} aria-label={`Remover ${item}`}><Trash2 size={16} /></button></div>)}
             </div>
+            {!filteredCatalog.length && <div className="empty-state compact-empty"><Search size={24} /><strong>Nenhum item encontrado</strong><span>Ajuste a busca ou o filtro para conferir os cadastros.</span></div>}
           </>
         ) : (
           <>
@@ -116,7 +230,7 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
               <button className="button button-primary" onClick={addAccount}><Plus size={17} /> Adicionar acesso</button>
             </div>
             <div className="management-list access-list">
-              {settings.accessAccounts.map((item) => (
+              {filteredAccounts.map((item) => (
                 <div key={item.id}>
                   <span><strong>{item.name}</strong><small>{item.username} · {item.role}</small></span>
                   <label className="mini-switch"><input type="checkbox" checked={item.active} onChange={() => onSettingsChange({ ...settings, accessAccounts: settings.accessAccounts.map((current) => current.id === item.id ? { ...current, active: !current.active } : current) })} /><span>{item.active ? "Ativo" : "Inativo"}</span></label>
@@ -124,6 +238,7 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
                 </div>
               ))}
             </div>
+            {!filteredAccounts.length && <div className="empty-state compact-empty"><Search size={24} /><strong>Nenhum item encontrado</strong><span>Ajuste a busca ou o filtro para conferir os acessos.</span></div>}
           </>
         )}
       </section>
