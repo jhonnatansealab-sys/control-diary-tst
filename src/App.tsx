@@ -10,6 +10,7 @@ import {
   fetchRemoteState,
   updateRemoteRecord,
   updateRemoteRequest,
+  updateRemoteScheduleRecord,
   updateRemoteScheduleStatus,
   updateRemoteSettings,
 } from "./lib/api";
@@ -246,6 +247,23 @@ export default function App() {
     return true;
   }
 
+  async function updateScheduleRecord(scheduleRecord: ScheduleRecord) {
+    if (!user || !["supervisor", "admin"].includes(user.role)) return false;
+    let nextRecord = scheduleRecord;
+    if (!isDemoMode) {
+      try {
+        const response = await updateRemoteScheduleRecord(user, scheduleRecord);
+        nextRecord = response.scheduleRecord;
+        setRemoteError("");
+      } catch (error) {
+        setRemoteError((error as Error).message);
+        return false;
+      }
+    }
+    setScheduleRecords((current) => current.map((record) => (record.id === nextRecord.id ? nextRecord : record)));
+    return true;
+  }
+
   async function changeSettings(nextSettings: typeof settings) {
     if (!isDemoMode && user) {
       try {
@@ -319,6 +337,7 @@ export default function App() {
                   settings={settings}
                   records={scheduleRecords}
                   onCreate={addScheduleRecord}
+                  onUpdate={updateScheduleRecord}
                   onStatusChange={changeScheduleStatus}
                 />
               )

@@ -124,6 +124,14 @@ export async function createRemoteScheduleRecord(user: AuthUser, scheduleRecord:
   );
 }
 
+export async function updateRemoteScheduleRecord(user: AuthUser, scheduleRecord: ScheduleRecord) {
+  return request<{ scheduleRecord: ScheduleRecord }>(
+    "schedule",
+    { method: "PATCH", body: JSON.stringify({ scheduleRecord }) },
+    user.sessionToken,
+  );
+}
+
 export async function updateRemoteScheduleStatus(
   user: AuthUser,
   id: string,

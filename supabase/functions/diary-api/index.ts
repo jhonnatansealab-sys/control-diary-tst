@@ -421,6 +421,36 @@ Deno.serve(async (request) => {
       return json({ scheduleRecord: { ...scheduleRecord, createdBy: scheduleRecord.createdBy || session.name } }, 201);
     }
 
+    if (request.method === "PATCH" && action === "schedule") {
+      await requireSession(request, ["supervisor", "admin"]);
+      const body = await readBody(request);
+      const scheduleRecord = body.scheduleRecord;
+      if (!isValidScheduleRecord(scheduleRecord)) {
+        return json({ error: "Agendamento invalido." }, 400);
+      }
+      const { data: existing, error: existingError } = await supabase
+        .from("app_schedule_records")
+        .select("id")
+        .eq("id", scheduleRecord.id)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing) return json({ error: "Agendamento nao encontrado." }, 404);
+      const { error } = await supabase
+        .from("app_schedule_records")
+        .update({
+          scheduled_at: scheduleRecord.scheduledAt,
+          vessel: scheduleRecord.vessel,
+          os_number: scheduleRecord.osNumber,
+          status: scheduleRecord.status,
+          service_type: scheduleRecord.serviceType,
+          payload: scheduleRecord,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", scheduleRecord.id);
+      if (error) throw error;
+      return json({ scheduleRecord });
+    }
+
     if (request.method === "PATCH" && action === "schedule-status") {
       await requireSession(request, ["supervisor", "admin"]);
       const body = await readBody(request);
