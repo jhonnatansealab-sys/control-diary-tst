@@ -1,4 +1,6 @@
 import {
+  Archive,
+  ArchiveRestore,
   CalendarClock,
   CheckCircle2,
   Clock,
@@ -33,6 +35,8 @@ interface ScheduleProps {
   records: ScheduleRecord[];
   onCreate: (record: ScheduleRecord) => Promise<boolean>;
   onUpdate: (record: ScheduleRecord) => Promise<boolean>;
+  onArchive: (id: string, archived: boolean, observation: string) => Promise<boolean>;
+  onDelete: (id: string) => Promise<boolean>;
   onStatusChange: (id: string, status: ScheduleStatus, observation: string) => Promise<boolean>;
 }
 
@@ -218,9 +222,10 @@ function validateDraft(draft: ScheduleDraft) {
   return "";
 }
 
-export function Schedule({ user, settings, records, onCreate, onUpdate, onStatusChange }: ScheduleProps) {
+export function Schedule({ user, settings, records, onCreate, onUpdate, onArchive, onDelete, onStatusChange }: ScheduleProps) {
   const canManage = user.role === "admin" || user.role === "supervisor";
   const [query, setQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const [filters, setFilters] = useState<ScheduleFilters>({
     status: "Todos",
     vessel: "Todas",
@@ -233,6 +238,8 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
   const [selectedRecord, setSelectedRecord] = useState<ScheduleRecord | null>(null);
   const [editObservation, setEditObservation] = useState("");
   const [pendingStatus, setPendingStatus] = useState<{ record: ScheduleRecord; status: ScheduleStatus; observation: string } | null>(null);
+  const [pendingArchive, setPendingArchive] = useState<{ record: ScheduleRecord; archived: boolean; observation: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ScheduleRecord | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -240,6 +247,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
   const filteredRecords = useMemo(() => {
     const term = normalizeText(query.trim());
     return records.filter((record) => {
+      if (!!record.archived !== showArchived) return false;
       if (filters.status !== "Todos" && record.status !== filters.status) return false;
       if (filters.vessel !== "Todas" && record.vessel !== filters.vessel) return false;
       if (filters.serviceType !== "Todos" && record.serviceType !== filters.serviceType) return false;
@@ -258,7 +266,9 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
       ].join(" "));
       return searchable.includes(term);
     });
-  }, [filters, query, records]);
+  }, [filters, query, records, showArchived]);
+
+  const archivedCount = records.filter((record) => record.archived).length;
 
   const grouped = useMemo(
     () => statuses.map((status) => ({
@@ -358,7 +368,13 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
           <h1>Agendamento de Programação</h1>
           <p>Acompanhe os agendamentos no Kanban e pesquise pelo item desejado.</p>
         </div>
-        {canManage && <button className="button button-primary" onClick={openNewSchedule}><Plus size={18} /> Nova Programação</button>}
+        <div className="schedule-heading-actions">
+          <button className={`button ${showArchived ? "button-primary" : "button-secondary"}`} onClick={() => setShowArchived((current) => !current)}>
+            {showArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}
+            {showArchived ? "Ver ativos" : `Arquivados (${archivedCount})`}
+          </button>
+          {canManage && <button className="button button-primary" onClick={openNewSchedule}><Plus size={18} /> Nova Programação</button>}
+        </div>
       </section>
 
       <section className="panel schedule-filter-panel">
@@ -374,7 +390,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
           <label><span>Até</span><input type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></label>
           <button className="button button-secondary schedule-clear-filters" type="button" onClick={() => { setQuery(""); setFilters({ status: "Todos", vessel: "Todas", serviceType: "Todos", from: "", to: "" }); }}>Limpar filtros</button>
         </div>
-        <span>{filteredRecords.length} de {records.length} programações exibidas</span>
+        <span>{filteredRecords.length} de {records.filter((record) => !!record.archived === showArchived).length} programações {showArchived ? "arquivadas" : "ativas"} exibidas</span>
       </section>
 
       <section className="schedule-board schedule-board-full">
@@ -391,6 +407,8 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
                   record={record}
                   canManage={canManage}
                   onOpen={() => setSelectedRecord(record)}
+                  onArchive={() => setPendingArchive({ record, archived: !record.archived, observation: "" })}
+                  onDelete={() => setPendingDelete(record)}
                   onStatusChange={(nextStatus) => {
                     if (nextStatus !== record.status) {
                       setPendingStatus({ record, status: nextStatus, observation: "" });
@@ -410,6 +428,8 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
           canManage={canManage}
           onClose={() => setSelectedRecord(null)}
           onEdit={() => openEditSchedule(selectedRecord)}
+          onArchive={() => setPendingArchive({ record: selectedRecord, archived: !selectedRecord.archived, observation: "" })}
+          onDelete={() => setPendingDelete(selectedRecord)}
         />
       )}
 
@@ -443,6 +463,42 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onStatus
           }}
         />
       )}
+
+      {pendingArchive && (
+        <ArchiveObservationModal
+          pending={pendingArchive}
+          saving={saving}
+          onChange={(observation) => setPendingArchive((current) => current ? { ...current, observation } : current)}
+          onClose={() => setPendingArchive(null)}
+          onConfirm={async () => {
+            if (!pendingArchive.observation.trim()) return;
+            setSaving(true);
+            const saved = await onArchive(pendingArchive.record.id, pendingArchive.archived, pendingArchive.observation);
+            setSaving(false);
+            if (saved) {
+              setPendingArchive(null);
+              setSelectedRecord(null);
+            }
+          }}
+        />
+      )}
+
+      {pendingDelete && (
+        <DeleteScheduleModal
+          record={pendingDelete}
+          saving={saving}
+          onClose={() => setPendingDelete(null)}
+          onConfirm={async () => {
+            setSaving(true);
+            const deleted = await onDelete(pendingDelete.id);
+            setSaving(false);
+            if (deleted) {
+              setPendingDelete(null);
+              setSelectedRecord(null);
+            }
+          }}
+        />
+      )}
     </>
   );
 }
@@ -451,17 +507,21 @@ function ScheduleCard({
   record,
   canManage,
   onOpen,
+  onArchive,
+  onDelete,
   onStatusChange,
 }: {
   record: ScheduleRecord;
   canManage: boolean;
   onOpen: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
   onStatusChange: (status: ScheduleStatus) => void;
 }) {
   return (
     <article className="schedule-card compact-schedule-card" onClick={onOpen}>
       <div className="schedule-card-top">
-        <span className={`schedule-status ${statusClass(record.status)}`}>{record.status}</span>
+        <span className={`schedule-status ${statusClass(record.status)}`}>{record.archived ? "Arquivado" : record.status}</span>
         <button className="row-action" type="button" onClick={(event) => { event.stopPropagation(); onOpen(); }}><Eye size={13} /> Abrir</button>
       </div>
       <h3>{record.osNumber}</h3>
@@ -471,12 +531,20 @@ function ScheduleCard({
         <div><dt><Clock size={13} /> Programação</dt><dd>{record.programs.map((program) => `${program.shift}: ${program.timeRange}`).join(" / ")}</dd></div>
       </dl>
       {canManage && (
-        <label className="schedule-status-select" onClick={(event) => event.stopPropagation()}>
-          <span>Status</span>
-          <select value={record.status} onChange={(event) => onStatusChange(event.target.value as ScheduleStatus)}>
-            {statuses.map((status) => <option key={status}>{status}</option>)}
-          </select>
-        </label>
+        <div className="schedule-card-actions" onClick={(event) => event.stopPropagation()}>
+          {!record.archived && (
+            <label className="schedule-status-select">
+              <span>Status</span>
+              <select value={record.status} onChange={(event) => onStatusChange(event.target.value as ScheduleStatus)}>
+                {statuses.map((status) => <option key={status}>{status}</option>)}
+              </select>
+            </label>
+          )}
+          <div className="schedule-action-row">
+            <button className="row-action" type="button" onClick={onArchive}>{record.archived ? <ArchiveRestore size={13} /> : <Archive size={13} />} {record.archived ? "Restaurar" : "Arquivar"}</button>
+            <button className="row-action admin-delete-action" type="button" onClick={onDelete}><Trash2 size={13} /> Excluir</button>
+          </div>
+        </div>
       )}
     </article>
   );
@@ -487,11 +555,15 @@ function ScheduleDetailsModal({
   canManage,
   onClose,
   onEdit,
+  onArchive,
+  onDelete,
 }: {
   record: ScheduleRecord;
   canManage: boolean;
   onClose: () => void;
   onEdit: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
 }) {
   return (
     <div className="modal-backdrop">
@@ -516,7 +588,9 @@ function ScheduleDetailsModal({
         </div>
         <ScheduleHistory history={record.changeHistory ?? []} />
         <div className="form-actions">
-          {canManage && <button className="button button-primary" onClick={onEdit}><Pencil size={17} /> Editar</button>}
+          {canManage && !record.archived && <button className="button button-primary" onClick={onEdit}><Pencil size={17} /> Editar</button>}
+          {canManage && <button className="button button-secondary" onClick={onArchive}>{record.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />} {record.archived ? "Restaurar" : "Arquivar"}</button>}
+          {canManage && <button className="button button-danger" onClick={onDelete}><Trash2 size={17} /> Excluir</button>}
           <button className="button button-secondary" onClick={onClose}>Fechar</button>
         </div>
       </section>
@@ -555,6 +629,69 @@ function StatusObservationModal({
         <div className="form-actions">
           <button className="button button-secondary" type="button" onClick={onClose}>Cancelar</button>
           <button className="button button-primary" type="button" disabled={saving || !pending.observation.trim()} onClick={onConfirm}>{saving ? "Salvando..." : "Confirmar mudança"}</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ArchiveObservationModal({
+  pending,
+  saving,
+  onChange,
+  onClose,
+  onConfirm,
+}: {
+  pending: { record: ScheduleRecord; archived: boolean; observation: string };
+  saving: boolean;
+  onChange: (observation: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="modal-backdrop">
+      <section className="modal schedule-status-modal">
+        <div className="modal-header">
+          <div>
+            <span className="eyebrow">{pending.archived ? "ARQUIVAR" : "RESTAURAR"}</span>
+            <h2>{pending.record.osNumber}</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose}><X size={20} /></button>
+        </div>
+        <p>Informe o motivo para {pending.archived ? "arquivar" : "restaurar"} esta programação. Esta observação ficará gravada no histórico.</p>
+        <label className="field schedule-observation-field">
+          <span>Observação</span>
+          <textarea value={pending.observation} onChange={(event) => onChange(event.target.value)} placeholder="Explique o motivo desta ação." />
+        </label>
+        <div className="form-actions">
+          <button className="button button-secondary" type="button" onClick={onClose}>Cancelar</button>
+          <button className="button button-primary" type="button" disabled={saving || !pending.observation.trim()} onClick={onConfirm}>{saving ? "Salvando..." : "Confirmar"}</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DeleteScheduleModal({
+  record,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  record: ScheduleRecord;
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="modal-backdrop">
+      <section className="modal delete-record-modal">
+        <div className="delete-record-icon"><Trash2 size={24} /></div>
+        <h2>Excluir programação?</h2>
+        <p>Esta ação remove definitivamente o card <strong>{record.osNumber}</strong>. Para manter histórico, prefira arquivar.</p>
+        <div className="form-actions">
+          <button className="button button-secondary" type="button" onClick={onClose}>Cancelar</button>
+          <button className="button button-danger" type="button" disabled={saving} onClick={onConfirm}>{saving ? "Excluindo..." : "Excluir definitivamente"}</button>
         </div>
       </section>
     </div>

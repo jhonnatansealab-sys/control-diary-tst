@@ -145,6 +145,24 @@ export async function updateRemoteScheduleStatus(
   );
 }
 
+export async function deleteRemoteScheduleRecord(user: AuthUser, id: string) {
+  if (!supabaseUrl || !supabasePublishableKey) throw new Error("Supabase nao configurado.");
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/diary-api?action=schedule&id=${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: supabasePublishableKey,
+        "x-app-session": user.sessionToken ?? "",
+      },
+    },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: "Falha ao excluir programação." }));
+    throw new Error(body.error || "Falha ao excluir programação.");
+  }
+}
+
 export async function updateRemoteRequest(
   user: AuthUser,
   id: string,

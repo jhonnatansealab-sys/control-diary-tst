@@ -6,6 +6,7 @@ import {
   createRemoteRequest,
   createRemoteScheduleRecord,
   deleteRemoteRecord,
+  deleteRemoteScheduleRecord,
   fetchBootstrap,
   fetchRemoteState,
   updateRemoteRecord,
@@ -313,6 +314,59 @@ export default function App() {
     return true;
   }
 
+  async function archiveScheduleRecord(id: string, archived: boolean, observation: string) {
+    if (!user || !["supervisor", "admin"].includes(user.role)) return false;
+    const currentRecord = scheduleRecords.find((record) => record.id === id);
+    if (!currentRecord) return false;
+    let nextRecord: ScheduleRecord = {
+      ...currentRecord,
+      archived,
+      archivedAt: archived ? new Date().toISOString() : undefined,
+      archivedBy: archived ? user.name : undefined,
+    };
+    nextRecord = {
+      ...nextRecord,
+      changeHistory: [
+        ...(currentRecord.changeHistory ?? []),
+        createScheduleChangeLog(
+          "Arquivamento",
+          archived ? "Programação arquivada." : "Programação restaurada dos arquivados.",
+          observation,
+          user.name,
+          nextRecord,
+          currentRecord,
+        ),
+      ],
+    };
+    if (!isDemoMode) {
+      try {
+        const response = await updateRemoteScheduleRecord(user, nextRecord);
+        nextRecord = { ...response.scheduleRecord, changeHistory: response.scheduleRecord.changeHistory ?? [] };
+        setRemoteError("");
+      } catch (error) {
+        setRemoteError((error as Error).message);
+        return false;
+      }
+    }
+    setScheduleRecords((current) => current.map((record) => (record.id === id ? nextRecord : record)));
+    return true;
+  }
+
+  async function deleteScheduleRecord(id: string) {
+    if (!user || !["supervisor", "admin"].includes(user.role)) return false;
+    if (!isDemoMode) {
+      try {
+        await deleteRemoteScheduleRecord(user, id);
+        setRemoteError("");
+      } catch (error) {
+        setRemoteError((error as Error).message);
+        return false;
+      }
+    }
+    setScheduleRecords((current) => current.filter((record) => record.id !== id));
+    return true;
+  }
+
   async function changeSettings(nextSettings: typeof settings) {
     if (!isDemoMode && user) {
       try {
@@ -387,6 +441,8 @@ export default function App() {
                   records={scheduleRecords}
                   onCreate={addScheduleRecord}
                   onUpdate={updateScheduleRecord}
+                  onArchive={archiveScheduleRecord}
+                  onDelete={deleteScheduleRecord}
                   onStatusChange={changeScheduleStatus}
                 />
               )

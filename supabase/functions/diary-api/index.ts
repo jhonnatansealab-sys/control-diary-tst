@@ -529,6 +529,25 @@ Deno.serve(async (request) => {
       return json({ scheduleRecord });
     }
 
+    if (request.method === "DELETE" && action === "schedule") {
+      await requireSession(request, ["supervisor", "admin"]);
+      const id = url.searchParams.get("id");
+      if (!id) return json({ error: "Programacao invalida." }, 400);
+      const { data: existing, error: existingError } = await supabase
+        .from("app_schedule_records")
+        .select("id")
+        .eq("id", id)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing) return json({ error: "Programacao nao encontrada." }, 404);
+      const { error } = await supabase
+        .from("app_schedule_records")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
     if (request.method === "PATCH" && action === "record") {
       await requireSession(request, ["admin"]);
       const body = await readBody(request);

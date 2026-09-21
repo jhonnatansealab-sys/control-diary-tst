@@ -91,7 +91,7 @@ export interface ScheduleChangeSnapshot {
 
 export interface ScheduleChangeLog {
   id: string;
-  type: "Criação" | "Edição" | "Status";
+  type: "Criação" | "Edição" | "Status" | "Arquivamento";
   summary: string;
   observation: string;
   changedAt: string;
@@ -113,5 +113,8 @@ export interface ScheduleRecord {
   programs: ScheduleProgramTurn[];
   createdAt: string;
   createdBy: string;
+  archived?: boolean;
+  archivedAt?: string;
+  archivedBy?: string;
   changeHistory?: ScheduleChangeLog[];
 }
