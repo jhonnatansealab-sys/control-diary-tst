@@ -172,6 +172,10 @@ a { color: inherit; text-decoration: none; }
 .multi-select { position: relative; }
 .select-trigger { min-height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; text-align: left; color: #687b86; font-size: 11px; }
 .select-popover { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 15; padding: 6px; border: 1px solid var(--border); border-radius: 9px; background: white; box-shadow: 0 12px 30px rgba(21,51,69,.15); }
+.select-search { display: flex; align-items: center; gap: 7px; padding: 8px 9px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: 7px; color: #7d9099; }
+.select-search input { flex: 1; border: 0; outline: 0; color: #263f4f; font-size: 11px; background: transparent; }
+.select-popover-options { max-height: 220px; overflow-y: auto; display: grid; gap: 2px; }
+.select-popover-empty { padding: 9px; color: #90a0a8; font-size: 10px; }
 .select-popover button { width: 100%; display: flex; align-items: center; gap: 9px; padding: 9px; border: 0; border-radius: 6px; color: #415968; background: white; text-align: left; font-size: 11px; }
 .select-popover button:hover, .select-popover button.selected { background: #edf7f6; }
 .check-box { width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid #bccbd0; border-radius: 4px; color: white; }
