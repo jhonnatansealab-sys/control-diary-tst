@@ -1,4 +1,5 @@
 import {
+  Anchor,
   Archive,
   ArchiveRestore,
   CalendarClock,
@@ -6,6 +7,7 @@ import {
   Clock,
   Eye,
   History,
+  MapPin,
   MessageSquare,
   Pencil,
   Phone,
@@ -26,6 +28,7 @@ import type {
   ScheduleRecord,
   ScheduleServiceType,
   ScheduleStatus,
+  ServiceRegion,
   SystemSettings,
 } from "../types";
 
@@ -61,7 +64,7 @@ function createClientId(prefix: string) {
 }
 
 function emptyContact(prefix: string): ScheduleContact {
-  return { id: createClientId(prefix), name: "", contact: "" };
+  return { id: createClientId(prefix), name: "", contact: "", inTraining: false };
 }
 
 function defaultProgram(shift: "Diurno" | "Noturno"): ScheduleProgramTurn {
@@ -71,13 +74,15 @@ function defaultProgram(shift: "Diurno" | "Noturno"): ScheduleProgramTurn {
   };
 }
 
-function emptyDraft(vessels: string[]): ScheduleDraft {
+function emptyDraft(vessels: string[], regions: ServiceRegion[]): ScheduleDraft {
   return {
     vessel: vessels[0] ?? "",
     scheduledAt: "",
     osNumber: "",
     serviceType: "Operacional",
     status: "Programado",
+    region: regions[0]?.name ?? "",
+    post: "",
     dayTsts: [emptyContact("day")],
     nightTsts: [emptyContact("night")],
     cboSupports: [emptyContact("cbo")],
@@ -100,6 +105,8 @@ function cloneDraft(record: ScheduleRecord): ScheduleDraft {
     osNumber: record.osNumber,
     serviceType: record.serviceType,
     status: record.status,
+    region: record.region,
+    post: record.post,
     dayTsts: record.dayTsts.map((item) => ({ ...item })),
     nightTsts: record.nightTsts.map((item) => ({ ...item })),
     cboSupports: record.cboSupports.map((item) => ({ ...item })),
@@ -137,6 +144,8 @@ function scheduleSnapshot(record: ScheduleRecord) {
     osNumber: record.osNumber,
     serviceType: record.serviceType,
     status: record.status,
+    region: record.region,
+    post: record.post,
     dayTsts: record.dayTsts.map((item) => ({ ...item })),
     nightTsts: record.nightTsts.map((item) => ({ ...item })),
     cboSupports: record.cboSupports.map((item) => ({ ...item })),
@@ -168,6 +177,8 @@ function summarizeScheduleChanges(before: ScheduleRecord, after: ScheduleRecord)
     before.scheduledAt !== after.scheduledAt ? `Data alterada de ${formatDateTime(before.scheduledAt)} para ${formatDateTime(after.scheduledAt)}.` : "",
     before.serviceType !== after.serviceType ? `Tipo alterado de ${before.serviceType} para ${after.serviceType}.` : "",
     before.status !== after.status ? `Status alterado de ${before.status} para ${after.status}.` : "",
+    before.region !== after.region ? `Região alterada de ${before.region} para ${after.region}.` : "",
+    before.post !== after.post ? `Posto alterado de ${before.post} para ${after.post}.` : "",
     summarizePeopleChange("TSTs diurnos", before.dayTsts, after.dayTsts),
     summarizePeopleChange("TSTs noturnos", before.nightTsts, after.nightTsts),
     summarizePeopleChange("Suporte CBO", before.cboSupports, after.cboSupports),
@@ -208,16 +219,21 @@ function validateDraft(draft: ScheduleDraft) {
   const cboSupports = validContacts(draft.cboSupports);
   const programs = draft.programs.filter((program) => program.timeRange.trim());
 
-  if (!draft.vessel || !draft.scheduledAt || !draft.osNumber.trim() || !programs.length) {
-    return "Preencha embarcação, data/hora, número da OS e programação de atendimento.";
+  if (!draft.vessel || !draft.scheduledAt || !draft.osNumber.trim() || !draft.region || !draft.post || !programs.length) {
+    return "Preencha embarcação, data/hora, número da OS, região, posto de atendimento e programação de atendimento.";
   }
   if (!dayTsts.length && !nightTsts.length) {
     return "Informe pelo menos um TST diurno ou noturno.";
   }
-  const invalidContact = [...dayTsts, ...nightTsts, ...cboSupports]
+  const invalidTst = [...dayTsts, ...nightTsts]
+    .find((contact) => !contact.name || (contact.contact && !phonePattern.test(contact.contact)));
+  if (invalidTst) {
+    return "Os TSTs precisam de nome completo. Se informar contato, use o formato (21) 99999-9999.";
+  }
+  const invalidContact = cboSupports
     .find((contact) => !contact.name || !phonePattern.test(contact.contact));
   if (invalidContact) {
-    return "Todos os envolvidos precisam de nome completo e contato no formato (21) 99999-9999.";
+    return "O suporte da CBO precisa de nome completo e contato no formato (21) 99999-9999.";
   }
   return "";
 }
@@ -234,7 +250,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
     from: "",
     to: "",
   });
-  const [draft, setDraft] = useState<ScheduleDraft>(() => emptyDraft(settings.vessels));
+  const [draft, setDraft] = useState<ScheduleDraft>(() => emptyDraft(settings.vessels, settings.serviceRegions));
   const [editingRecord, setEditingRecord] = useState<ScheduleRecord | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<ScheduleRecord | null>(null);
   const [editObservation, setEditObservation] = useState("");
@@ -260,6 +276,8 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
         record.vessel,
         record.serviceType,
         record.status,
+        record.region,
+        record.post,
         formatDateTime(record.scheduledAt),
         record.programs.map((program) => `${program.shift} ${program.timeRange}`).join(" "),
         [...record.dayTsts, ...record.nightTsts, ...record.cboSupports].map((person) => `${person.name} ${person.contact}`).join(" "),
@@ -282,7 +300,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
   );
 
   function openNewSchedule() {
-    setDraft(emptyDraft(settings.vessels));
+    setDraft(emptyDraft(settings.vessels, settings.serviceRegions));
     setEditingRecord(null);
     setSelectedRecord(null);
     setEditObservation("");
@@ -345,36 +363,36 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
       recordToSave = {
         ...recordToSave,
         changeHistory: [
-          createScheduleLog("Criação", "Programação criada.", "Registro inicial da programação.", user.name, recordToSave),
+          createScheduleLog("Criação", "Atendimento criado.", "Registro inicial do atendimento.", user.name, recordToSave),
         ],
       };
     }
     const saved = editingRecord ? await onUpdate(recordToSave) : await onCreate(recordToSave);
     setSaving(false);
     if (!saved) {
-      setError("Não foi possível salvar a programação.");
+      setError("Não foi possível salvar o atendimento.");
       return;
     }
     setFormOpen(false);
     setEditingRecord(null);
     setEditObservation("");
-    setDraft(emptyDraft(settings.vessels));
+    setDraft(emptyDraft(settings.vessels, settings.serviceRegions));
   }
 
   return (
     <>
       <section className="page-heading heading-with-action schedule-heading">
         <div>
-          <span className="eyebrow">PROGRAMAÇÃO</span>
-          <h1>Agendamento de Programação</h1>
-          <p>Acompanhe os agendamentos no Kanban e pesquise pelo item desejado.</p>
+          <span className="eyebrow">CONTROLE DE ATENDIMENTO</span>
+          <h1>Controle de Atendimento</h1>
+          <p>Acompanhe os atendimentos no Kanban e pesquise pelo item desejado.</p>
         </div>
         <div className="schedule-heading-actions">
           <button className={`button ${showArchived ? "button-primary" : "button-secondary"}`} onClick={() => setShowArchived((current) => !current)}>
             {showArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}
             {showArchived ? "Ver ativos" : `Arquivados (${archivedCount})`}
           </button>
-          {canCreate && <button className="button button-primary" onClick={openNewSchedule}><Plus size={18} /> Nova Programação</button>}
+          {canCreate && <button className="button button-primary" onClick={openNewSchedule}><Plus size={18} /> Novo Atendimento</button>}
         </div>
       </section>
 
@@ -391,7 +409,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
           <label><span>Até</span><input type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></label>
           <button className="button button-secondary schedule-clear-filters" type="button" onClick={() => { setQuery(""); setFilters({ status: "Todos", vessel: "Todas", serviceType: "Todos", from: "", to: "" }); }}>Limpar filtros</button>
         </div>
-        <span>{filteredRecords.length} de {records.filter((record) => !!record.archived === showArchived).length} programações {showArchived ? "arquivadas" : "ativas"} exibidas</span>
+        <span>{filteredRecords.length} de {records.filter((record) => !!record.archived === showArchived).length} atendimentos {showArchived ? "arquivados" : "ativos"} exibidos</span>
       </section>
 
       <section className="schedule-board schedule-board-full">
@@ -417,7 +435,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
                   }}
                 />
               ))}
-              {!column.records.length && <div className="schedule-empty">Nenhum agendamento.</div>}
+              {!column.records.length && <div className="schedule-empty">Nenhum atendimento.</div>}
             </div>
           </section>
         ))}
@@ -529,6 +547,7 @@ function ScheduleCard({
       <dl>
         <div><dt><Ship size={13} /> Embarcação</dt><dd>{record.vessel}</dd></div>
         <div><dt><CalendarClock size={13} /> Data da solicitação</dt><dd>{formatDateTime(record.scheduledAt)}</dd></div>
+        <div><dt><MapPin size={13} /> Região / Posto</dt><dd>{record.region}{record.post ? ` - ${record.post}` : ""}</dd></div>
         <div><dt><Clock size={13} /> Programação</dt><dd>{record.programs.map((program) => `${program.shift}: ${program.timeRange}`).join(" / ")}</dd></div>
       </dl>
       {canManage && (
@@ -571,7 +590,7 @@ function ScheduleDetailsModal({
       <section className="modal schedule-detail-modal">
         <div className="modal-header">
           <div>
-            <span className="eyebrow">DETALHES DA PROGRAMAÇÃO</span>
+            <span className="eyebrow">DETALHES DO ATENDIMENTO</span>
             <h2>{record.osNumber}</h2>
           </div>
           <button className="icon-button" onClick={onClose}><X size={20} /></button>
@@ -580,6 +599,8 @@ function ScheduleDetailsModal({
           <DetailItem icon={Ship} label="Embarcação" value={record.vessel} />
           <DetailItem icon={CalendarClock} label="Data da solicitação" value={formatDateTime(record.scheduledAt)} />
           <DetailItem icon={CheckCircle2} label="Tipo de atendimento" value={record.serviceType} />
+          <DetailItem icon={MapPin} label="Região de atendimento" value={record.region} />
+          <DetailItem icon={Anchor} label="Posto de atendimento" value={record.post} />
           <DetailItem icon={Clock} label="Programação" value={record.programs.map((program) => `${program.shift}: ${program.timeRange}`).join(" / ")} />
         </div>
         <div className="schedule-people-grid">
@@ -688,7 +709,7 @@ function DeleteScheduleModal({
     <div className="modal-backdrop">
       <section className="modal delete-record-modal">
         <div className="delete-record-icon"><Trash2 size={24} /></div>
-        <h2>Excluir programação?</h2>
+        <h2>Excluir atendimento?</h2>
         <p>Esta ação remove definitivamente o card <strong>{record.osNumber}</strong>. Para manter histórico, prefira arquivar.</p>
         <div className="form-actions">
           <button className="button button-secondary" type="button" onClick={onClose}>Cancelar</button>
@@ -729,7 +750,10 @@ function PeopleBlock({ title, people, tone }: { title: string; people: ScheduleC
       {people.length ? people.map((person) => (
         <div key={person.id}>
           <UserRound size={15} />
-          <span><strong>{person.name}</strong><small><Phone size={12} /> {person.contact}</small></span>
+          <span>
+            <strong>{person.name}{person.inTraining ? " · Em treinamento" : ""}</strong>
+            {person.contact && <small><Phone size={12} /> {person.contact}</small>}
+          </span>
         </div>
       )) : <p>Nenhum envolvido informado.</p>}
     </section>
@@ -793,8 +817,8 @@ function ScheduleFormModal({
       <form className="modal schedule-form-modal" onSubmit={onSubmit}>
         <div className="modal-header">
           <div>
-            <span className="eyebrow">{editing ? "EDIÇÃO" : "NOVA PROGRAMAÇÃO"}</span>
-            <h2>{editing ? "Editar programação" : "Nova Programação"}</h2>
+            <span className="eyebrow">{editing ? "EDIÇÃO" : "NOVO ATENDIMENTO"}</span>
+            <h2>{editing ? "Editar atendimento" : "Novo Atendimento"}</h2>
           </div>
           <button className="icon-button" type="button" onClick={onClose}><X size={20} /></button>
         </div>
@@ -805,10 +829,32 @@ function ScheduleFormModal({
             <label className="field"><span>Data e hora</span><input type="datetime-local" value={draft.scheduledAt} onChange={(event) => patchDraft({ scheduledAt: event.target.value })} /></label>
             <label className="field"><span>Número da OS</span><input value={draft.osNumber} onChange={(event) => patchDraft({ osNumber: event.target.value })} placeholder="Código da empresa cliente" /></label>
             <label className="field"><span>Tipo de atendimento</span><select value={draft.serviceType} onChange={(event) => patchDraft({ serviceType: event.target.value as ScheduleServiceType })}>{serviceTypes.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label className="field">
+              <span>Região de atendimento</span>
+              <select
+                value={draft.region}
+                onChange={(event) => patchDraft({ region: event.target.value, post: "" })}
+              >
+                <option value="">Selecione a região</option>
+                {settings.serviceRegions.map((region) => <option key={region.id} value={region.name}>{region.name}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span>Posto de atendimento</span>
+              <select
+                value={draft.post}
+                disabled={!draft.region}
+                onChange={(event) => patchDraft({ post: event.target.value })}
+              >
+                <option value="">Selecione o posto</option>
+                {(settings.serviceRegions.find((region) => region.name === draft.region)?.posts ?? [])
+                  .map((post) => <option key={post} value={post}>{post}</option>)}
+              </select>
+            </label>
             {editing && <label className="field"><span>Status</span><select value={draft.status} onChange={(event) => patchDraft({ status: event.target.value as ScheduleStatus })}>{statuses.map((status) => <option key={status}>{status}</option>)}</select></label>}
           </div>
-          <ContactGroup title="TSTs diurnos" options={settings.technicians} contacts={draft.dayTsts} onAdd={() => addContact("dayTsts", "day")} onRemove={(id) => removeContact("dayTsts", id)} onChange={(id, patch) => updateContact("dayTsts", id, patch)} />
-          <ContactGroup title="TSTs noturnos" options={settings.technicians} contacts={draft.nightTsts} onAdd={() => addContact("nightTsts", "night")} onRemove={(id) => removeContact("nightTsts", id)} onChange={(id, patch) => updateContact("nightTsts", id, patch)} />
+          <ContactGroup title="TSTs diurnos" options={settings.technicians} contacts={draft.dayTsts} showTraining onAdd={() => addContact("dayTsts", "day")} onRemove={(id) => removeContact("dayTsts", id)} onChange={(id, patch) => updateContact("dayTsts", id, patch)} />
+          <ContactGroup title="TSTs noturnos" options={settings.technicians} contacts={draft.nightTsts} showTraining onAdd={() => addContact("nightTsts", "night")} onRemove={(id) => removeContact("nightTsts", id)} onChange={(id, patch) => updateContact("nightTsts", id, patch)} />
           <ContactGroup title="Suporte da CBO" contacts={draft.cboSupports} onAdd={() => addContact("cboSupports", "cbo")} onRemove={(id) => removeContact("cboSupports", id)} onChange={(id, patch) => updateContact("cboSupports", id, patch)} />
           {editing && (
             <label className="field schedule-observation-field">
@@ -836,7 +882,7 @@ function ScheduleFormModal({
         </div>
         <div className="form-actions">
           <button className="button button-secondary" type="button" onClick={onClose}>Cancelar</button>
-          <button className="button button-primary" disabled={saving} type="submit">{saving ? "Salvando..." : "Salvar programação"}</button>
+          <button className="button button-primary" disabled={saving} type="submit">{saving ? "Salvando..." : "Salvar atendimento"}</button>
         </div>
       </form>
     </div>
@@ -847,6 +893,7 @@ function ContactGroup({
   title,
   options,
   contacts,
+  showTraining,
   onAdd,
   onRemove,
   onChange,
@@ -854,6 +901,7 @@ function ContactGroup({
   title: string;
   options?: string[];
   contacts: ScheduleContact[];
+  showTraining?: boolean;
   onAdd: () => void;
   onRemove: (id: string) => void;
   onChange: (id: string, patch: Partial<ScheduleContact>) => void;
@@ -862,7 +910,7 @@ function ContactGroup({
     <div className="schedule-contact-group">
       <div><strong>{title}</strong><button type="button" className="text-link" onClick={onAdd}><Plus size={14} /> Adicionar</button></div>
       {contacts.map((contact) => (
-        <div className="schedule-contact-row" key={contact.id}>
+        <div className={`schedule-contact-row ${showTraining ? "schedule-contact-row-training" : ""}`} key={contact.id}>
           {options ? (
             <select value={contact.name} onChange={(event) => onChange(contact.id, { name: event.target.value })}>
               <option value="">Nome completo</option>
@@ -871,7 +919,13 @@ function ContactGroup({
           ) : (
             <input value={contact.name} onChange={(event) => onChange(contact.id, { name: event.target.value })} placeholder="Nome completo" />
           )}
-          <input value={contact.contact} onChange={(event) => onChange(contact.id, { contact: normalizePhone(event.target.value) })} placeholder="(21) 99999-9999" />
+          <input value={contact.contact} onChange={(event) => onChange(contact.id, { contact: normalizePhone(event.target.value) })} placeholder={showTraining ? "(21) 99999-9999 (opcional)" : "(21) 99999-9999"} />
+          {showTraining && (
+            <label className="schedule-training-checkbox">
+              <input type="checkbox" checked={!!contact.inTraining} onChange={(event) => onChange(contact.id, { inTraining: event.target.checked })} />
+              <span>TST em Treinamento</span>
+            </label>
+          )}
           <button type="button" onClick={() => onRemove(contact.id)} aria-label={`Remover ${contact.name || title}`}><Trash2 size={15} /></button>
         </div>
       ))}

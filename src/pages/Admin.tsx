@@ -1,9 +1,9 @@
-import { Camera, Filter, Plus, Search, Ship, Trash2, UserCog, Users } from "lucide-react";
+import { Camera, Filter, MapPin, Plus, Search, Ship, Trash2, UserCog, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { deleteRemoteSelfie, fetchRemoteSelfies } from "../lib/api";
 import { loadSelfies, saveSelfies } from "../lib/storage";
 import { isDemoMode } from "../lib/supabase";
-import type { AccessAccount, AuthUser, Role, SelfieRecord, SystemSettings } from "../types";
+import type { AccessAccount, AuthUser, Role, SelfieRecord, ServiceRegion, SystemSettings } from "../types";
 
 interface AdminProps {
   user: AuthUser;
@@ -11,7 +11,7 @@ interface AdminProps {
   onSettingsChange: (settings: SystemSettings) => void | Promise<void>;
 }
 
-type AdminSection = "technicians" | "vessels" | "access";
+type AdminSection = "technicians" | "vessels" | "regions" | "access";
 type ManagementFilter = "all" | "contains" | "exact" | "possibleDuplicates" | "supervisor" | "financeiro" | "admin" | "active" | "inactive";
 
 function normalizeSearch(value: string) {
@@ -41,6 +41,7 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
   const [selfies, setSelfies] = useState<SelfieRecord[]>(loadSelfies);
   const [account, setAccount] = useState({ name: "", username: "", password: "", role: "supervisor" as Exclude<Role, "colaborador"> });
   const [selfieError, setSelfieError] = useState("");
+  const [newPostByRegion, setNewPostByRegion] = useState<Record<string, string>>({});
   const isSystemAdmin = user.role === "admin";
 
   useEffect(() => {
@@ -73,6 +74,13 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
         return;
       }
       onSettingsChange({ ...settings, vessels: [...new Set([...settings.vessels, vesselName])].sort() });
+    } else if (section === "regions") {
+      if (settings.serviceRegions.some((region) => normalizeSearch(region.name) === normalizeSearch(value))) {
+        setManagementMessage("Esta região já parece estar cadastrada. Use a busca para conferir antes de adicionar novamente.");
+        return;
+      }
+      const region: ServiceRegion = { id: `region-${Date.now()}`, name: value, posts: [] };
+      onSettingsChange({ ...settings, serviceRegions: [...settings.serviceRegions, region] });
     }
     setNewItem("");
     setManagementMessage("");
@@ -84,6 +92,37 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
     } else {
       onSettingsChange({ ...settings, vessels: settings.vessels.filter((item) => item !== value) });
     }
+  }
+
+  function removeRegion(id: string) {
+    onSettingsChange({ ...settings, serviceRegions: settings.serviceRegions.filter((region) => region.id !== id) });
+  }
+
+  function addPost(regionId: string) {
+    const value = (newPostByRegion[regionId] ?? "").trim();
+    if (!value) return;
+    const region = settings.serviceRegions.find((item) => item.id === regionId);
+    if (region?.posts.some((post) => normalizeSearch(post) === normalizeSearch(value))) {
+      setManagementMessage("Este posto já está cadastrado nesta região.");
+      return;
+    }
+    onSettingsChange({
+      ...settings,
+      serviceRegions: settings.serviceRegions.map((item) =>
+        item.id === regionId ? { ...item, posts: [...item.posts, value] } : item
+      ),
+    });
+    setNewPostByRegion((current) => ({ ...current, [regionId]: "" }));
+    setManagementMessage("");
+  }
+
+  function removePost(regionId: string, post: string) {
+    onSettingsChange({
+      ...settings,
+      serviceRegions: settings.serviceRegions.map((item) =>
+        item.id === regionId ? { ...item, posts: item.posts.filter((current) => current !== post) } : item
+      ),
+    });
   }
 
   function addAccount() {
@@ -113,7 +152,7 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
     if (isDemoMode) saveSelfies(next);
   }
 
-  const catalog = section === "technicians" ? settings.technicians : settings.vessels;
+  const catalog = section === "technicians" ? settings.technicians : section === "vessels" ? settings.vessels : [];
   const normalizedSearch = normalizeSearch(managementSearch);
   const catalogDuplicateKeys = useMemo(() => duplicateKeys(catalog), [catalog]);
   const filteredCatalog = useMemo(
@@ -144,8 +183,16 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
     }),
     [managementFilter, normalizedSearch, settings.accessAccounts],
   );
-  const visibleCount = section === "access" ? filteredAccounts.length : filteredCatalog.length;
-  const totalCount = section === "access" ? settings.accessAccounts.length : catalog.length;
+  const visibleCount = section === "access"
+    ? filteredAccounts.length
+    : section === "regions"
+      ? settings.serviceRegions.length
+      : filteredCatalog.length;
+  const totalCount = section === "access"
+    ? settings.accessAccounts.length
+    : section === "regions"
+      ? settings.serviceRegions.length
+      : catalog.length;
   const searchPlaceholder = section === "technicians"
     ? "Pesquisar técnico cadastrado"
     : section === "vessels"
@@ -166,6 +213,9 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
         <button className={`admin-card ${section === "vessels" ? "selected" : ""}`} onClick={() => setSection("vessels")}>
           <span className="admin-icon"><Ship size={24} /></span><div><strong>{settings.vessels.length}</strong><span>Embarcações ativas</span></div><b>Gerenciar embarcações</b>
         </button>
+        <button className={`admin-card ${section === "regions" ? "selected" : ""}`} onClick={() => setSection("regions")}>
+          <span className="admin-icon"><MapPin size={24} /></span><div><strong>{settings.serviceRegions.length}</strong><span>Regiões cadastradas</span></div><b>Gerenciar regiões e postos</b>
+        </button>
         {isSystemAdmin && (
           <button className={`admin-card ${section === "access" ? "selected" : ""}`} onClick={() => setSection("access")}>
             <span className="admin-icon"><UserCog size={24} /></span><div><strong>{settings.accessAccounts.length}</strong><span>Acessos configurados</span></div><b>Gerenciar acessos</b>
@@ -175,41 +225,79 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
 
       <section className="panel management-panel">
         <div className="panel-header">
-          <div><h2>{section === "technicians" ? "Técnicos" : section === "vessels" ? "Embarcações" : "Contas de acesso"}</h2><p>As alterações são aplicadas imediatamente aos formulários e ao login.</p></div>
+          <div><h2>{section === "technicians" ? "Técnicos" : section === "vessels" ? "Embarcações" : section === "regions" ? "Regiões e postos de atendimento" : "Contas de acesso"}</h2><p>As alterações são aplicadas imediatamente aos formulários e ao login.</p></div>
         </div>
-        <div className="management-tools">
-          <label className="search-field">
-            <Search size={17} />
-            <span className="sr-only">Barra de pesquisa</span>
-            <input value={managementSearch} onChange={(event) => setManagementSearch(event.target.value)} placeholder={searchPlaceholder} />
-          </label>
-          <label className="filter-select">
-            <Filter size={17} />
-            <select value={managementFilter} onChange={(event) => setManagementFilter(event.target.value as ManagementFilter)}>
-              <option value="all">Todos</option>
-              {section !== "access" ? (
-                <>
-                  <option value="contains">Contém o termo</option>
-                  <option value="exact">Coincidência exata</option>
-                  <option value="possibleDuplicates">Possiveis duplicados</option>
-                </>
-              ) : (
-                <>
-                  <option value="supervisor">Supervisores</option>
-                  <option value="financeiro">Financeiro</option>
-                  <option value="admin">Administradores</option>
-                  <option value="active">Ativos</option>
-                  <option value="inactive">Inativos</option>
-                </>
-              )}
-            </select>
-          </label>
-        </div>
+        {section !== "regions" && (
+          <div className="management-tools">
+            <label className="search-field">
+              <Search size={17} />
+              <span className="sr-only">Barra de pesquisa</span>
+              <input value={managementSearch} onChange={(event) => setManagementSearch(event.target.value)} placeholder={searchPlaceholder} />
+            </label>
+            <label className="filter-select">
+              <Filter size={17} />
+              <select value={managementFilter} onChange={(event) => setManagementFilter(event.target.value as ManagementFilter)}>
+                <option value="all">Todos</option>
+                {section !== "access" ? (
+                  <>
+                    <option value="contains">Contém o termo</option>
+                    <option value="exact">Coincidência exata</option>
+                    <option value="possibleDuplicates">Possiveis duplicados</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="supervisor">Supervisores</option>
+                    <option value="financeiro">Financeiro</option>
+                    <option value="admin">Administradores</option>
+                    <option value="active">Ativos</option>
+                    <option value="inactive">Inativos</option>
+                  </>
+                )}
+              </select>
+            </label>
+          </div>
+        )}
         <div className="management-results-summary">
           <span>{visibleCount} de {totalCount} itens exibidos</span>
           {managementMessage && <strong>{managementMessage}</strong>}
         </div>
-        {section !== "access" ? (
+        {section === "regions" ? (
+          <>
+            <div className="management-add">
+              <input value={newItem} onChange={(event) => setNewItem(event.target.value)} placeholder="Nome da região" onKeyDown={(event) => event.key === "Enter" && addCatalogItem()} />
+              <button className="button button-primary" onClick={addCatalogItem}><Plus size={17} /> Adicionar região</button>
+            </div>
+            <div className="regions-list">
+              {settings.serviceRegions.map((region) => (
+                <div className="region-card" key={region.id}>
+                  <div className="region-card-header">
+                    <span><MapPin size={15} /> <strong>{region.name}</strong></span>
+                    <button onClick={() => removeRegion(region.id)} aria-label={`Remover região ${region.name}`}><Trash2 size={16} /></button>
+                  </div>
+                  <div className="region-posts">
+                    {region.posts.map((post) => (
+                      <span className="region-post-chip" key={post}>
+                        {post}
+                        <button type="button" onClick={() => removePost(region.id, post)} aria-label={`Remover posto ${post}`}><Trash2 size={12} /></button>
+                      </span>
+                    ))}
+                    {!region.posts.length && <span className="region-post-empty">Nenhum posto cadastrado nesta região.</span>}
+                  </div>
+                  <div className="management-add region-post-add">
+                    <input
+                      value={newPostByRegion[region.id] ?? ""}
+                      onChange={(event) => setNewPostByRegion((current) => ({ ...current, [region.id]: event.target.value }))}
+                      placeholder="Nome do posto"
+                      onKeyDown={(event) => event.key === "Enter" && addPost(region.id)}
+                    />
+                    <button className="button button-secondary" type="button" onClick={() => addPost(region.id)}><Plus size={15} /> Adicionar posto</button>
+                  </div>
+                </div>
+              ))}
+              {!settings.serviceRegions.length && <div className="empty-state compact-empty"><Search size={24} /><strong>Nenhuma região cadastrada</strong><span>Adicione uma região para começar a cadastrar os postos de atendimento.</span></div>}
+            </div>
+          </>
+        ) : section !== "access" ? (
           <>
             <div className="management-add">
               <input value={newItem} onChange={(event) => setNewItem(event.target.value)} placeholder={section === "technicians" ? "Nome completo do técnico" : "Nome da embarcação"} onKeyDown={(event) => event.key === "Enter" && addCatalogItem()} />

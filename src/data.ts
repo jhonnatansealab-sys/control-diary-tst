@@ -1,4 +1,4 @@
-import type { DiaryRecord, EditRequest, ScheduleRecord, SystemSettings } from "./types";
+import type { DiaryRecord, EditRequest, ScheduleRecord, ServiceRegion, SystemSettings } from "./types";
 
 export const initialTechnicians = [
   "ANDRÉ VINICIUS DE OLIVEIRA PEREIRA",
@@ -104,6 +104,13 @@ export const initialVessels = [
   "SKANDI PARATY",
 ];
 
+export const initialServiceRegions: ServiceRegion[] = [
+  { id: "region-macae", name: "Macaé", posts: [] },
+  { id: "region-campos", name: "Campos", posts: [] },
+  { id: "region-niteroi", name: "Niterói", posts: [] },
+  { id: "region-sao-goncalo", name: "São Gonçalo", posts: [] },
+];
+
 export const demoRecords: DiaryRecord[] = [
   {
     id: "REG-0710",
@@ -185,6 +192,8 @@ export const demoScheduleRecords: ScheduleRecord[] = [
     osNumber: "OS-CLIENTE-001",
     serviceType: "Operacional",
     status: "Programado",
+    region: "Macaé",
+    post: "",
     dayTsts: [
       { id: "day-1", name: "Leandro da Silva da Costa", contact: "(21) 99999-9999" },
     ],
@@ -234,4 +243,5 @@ export const defaultSettings: SystemSettings = {
     },
   ],
   allowSelfieDeletion: false,
+  serviceRegions: initialServiceRegions,
 };

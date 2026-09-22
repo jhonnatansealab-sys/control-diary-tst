@@ -30,7 +30,7 @@ const baseNav = [
   { to: "/solicitacoes", label: "Solicitacoes", icon: FilePenLine },
 ];
 const analyticsNav = { to: "/relatorios", label: "Metricas", icon: BarChart3 };
-const scheduleNav = { to: "/programacao", label: "Programacao", icon: CalendarClock };
+const scheduleNav = { to: "/programacao", label: "Controle de Atendimento", icon: CalendarClock };
 
 function initials(name: string) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();

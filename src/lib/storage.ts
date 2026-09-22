@@ -103,6 +103,7 @@ export function loadSettings(): SystemSettings {
       ? accounts
       : [...accounts, defaultSettings.accessAccounts.find((account) => account.role === "financeiro")!],
     allowSelfieDeletion: saved.allowSelfieDeletion ?? false,
+    serviceRegions: saved.serviceRegions?.length ? saved.serviceRegions : defaultSettings.serviceRegions,
   };
 }
 

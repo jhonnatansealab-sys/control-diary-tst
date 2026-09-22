@@ -30,11 +30,18 @@ export interface AccessAccount {
   active: boolean;
 }
 
+export interface ServiceRegion {
+  id: string;
+  name: string;
+  posts: string[];
+}
+
 export interface SystemSettings {
   technicians: string[];
   vessels: string[];
   accessAccounts: AccessAccount[];
   allowSelfieDeletion: boolean;
+  serviceRegions: ServiceRegion[];
 }
 
 export interface TurnEntry {
@@ -70,6 +77,7 @@ export interface ScheduleContact {
   id: string;
   name: string;
   contact: string;
+  inTraining?: boolean;
 }
 
 export interface ScheduleProgramTurn {
@@ -83,6 +91,8 @@ export interface ScheduleChangeSnapshot {
   osNumber: string;
   serviceType: ScheduleServiceType;
   status: ScheduleStatus;
+  region: string;
+  post: string;
   dayTsts: ScheduleContact[];
   nightTsts: ScheduleContact[];
   cboSupports: ScheduleContact[];
@@ -107,6 +117,8 @@ export interface ScheduleRecord {
   osNumber: string;
   serviceType: ScheduleServiceType;
   status: ScheduleStatus;
+  region: string;
+  post: string;
   dayTsts: ScheduleContact[];
   nightTsts: ScheduleContact[];
   cboSupports: ScheduleContact[];

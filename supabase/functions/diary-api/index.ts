@@ -71,7 +71,7 @@ async function getSettings(includeAdminSettings = false) {
     await Promise.all([
       supabase
         .from("app_settings")
-        .select("technicians,vessels,allow_selfie_deletion")
+        .select("technicians,vessels,allow_selfie_deletion,service_regions")
         .eq("id", true)
         .single(),
       includeAdminSettings
@@ -86,6 +86,7 @@ async function getSettings(includeAdminSettings = false) {
   return {
     technicians: settings.technicians,
     vessels: settings.vessels,
+    serviceRegions: settings.service_regions ?? [],
     allowSelfieDeletion: includeAdminSettings ? settings.allow_selfie_deletion : false,
     accessAccounts: (accounts ?? []).map((account) => ({ ...account, password: "" })),
   };
@@ -135,6 +136,7 @@ interface TurnInput {
 interface ScheduleContactInput {
   name?: string;
   contact?: string;
+  inTraining?: boolean;
 }
 
 interface ScheduleProgramInput {
@@ -149,6 +151,8 @@ interface ScheduleInput {
   osNumber?: string;
   serviceType?: string;
   status?: string;
+  region?: string;
+  post?: string;
   dayTsts?: ScheduleContactInput[];
   nightTsts?: ScheduleContactInput[];
   cboSupports?: ScheduleContactInput[];
@@ -162,6 +166,8 @@ function scheduleSnapshot(record: ScheduleInput) {
     osNumber: record.osNumber,
     serviceType: record.serviceType,
     status: record.status,
+    region: record.region,
+    post: record.post,
     dayTsts: record.dayTsts ?? [],
     nightTsts: record.nightTsts ?? [],
     cboSupports: record.cboSupports ?? [],
@@ -222,12 +228,19 @@ function isValidContactList(contacts: ScheduleContactInput[] | undefined) {
     contacts.every((contact) => !!contact?.name?.trim() && isValidPhone(contact.contact));
 }
 
+function isValidTstList(contacts: ScheduleContactInput[] | undefined) {
+  return Array.isArray(contacts) &&
+    contacts.every((contact) => !!contact?.name?.trim() && (!contact.contact || isValidPhone(contact.contact)));
+}
+
 function isValidScheduleRecord(record: ScheduleInput | null | undefined) {
   if (
     !record?.id ||
     !record?.vessel?.trim() ||
     !record?.scheduledAt ||
     !record?.osNumber?.trim() ||
+    !record?.region?.trim() ||
+    !record?.post?.trim() ||
     !["Operacional", "DOC&CON", "Base"].includes(record.serviceType ?? "") ||
     !["Programado", "Em andamento", "Concluído", "Cancelado"].includes(record.status ?? "") ||
     !Array.isArray(record.programs) ||
@@ -240,8 +253,8 @@ function isValidScheduleRecord(record: ScheduleInput | null | undefined) {
   }
   const hasTst = !!record.dayTsts?.length || !!record.nightTsts?.length;
   return hasTst &&
-    isValidContactList(record.dayTsts ?? []) &&
-    isValidContactList(record.nightTsts ?? []) &&
+    isValidTstList(record.dayTsts ?? []) &&
+    isValidTstList(record.nightTsts ?? []) &&
     isValidContactList(record.cboSupports ?? []);
 }
 
@@ -654,7 +667,14 @@ Deno.serve(async (request) => {
       const session = await requireSession(request, ["supervisor", "admin"]);
       const body = await readBody(request);
       const settings = body.settings;
-      if (!Array.isArray(settings?.technicians) || !Array.isArray(settings?.vessels)) {
+      if (
+        !Array.isArray(settings?.technicians) ||
+        !Array.isArray(settings?.vessels) ||
+        !Array.isArray(settings?.serviceRegions) ||
+        settings.serviceRegions.some((region: { id?: string; name?: string; posts?: string[] }) =>
+          !region?.id || !region?.name?.trim() || !Array.isArray(region.posts)
+        )
+      ) {
         return json({ error: "Configuracoes invalidas." }, 400);
       }
       if (session.role === "admin" && !Array.isArray(settings.accessAccounts)) {
@@ -665,6 +685,7 @@ Deno.serve(async (request) => {
         .update({
           technicians: settings.technicians,
           vessels: settings.vessels,
+          service_regions: settings.serviceRegions,
           ...(session.role === "admin"
             ? { allow_selfie_deletion: settings.allowSelfieDeletion }
             : {}),

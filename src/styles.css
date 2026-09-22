@@ -410,6 +410,16 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
 .access-list small { margin-top: 2px; color: #81939c; font-size: 8px; }
 .mini-switch { display: flex; align-items: center; gap: 5px; color: #607681; font-size: 9px; }
 .deletion-policy { display: flex; align-items: center; gap: 7px; color: #586f7b; font-size: 9px; font-weight: 700; }
+.regions-list { display: grid; gap: 12px; padding: 20px; }
+.region-card { border: 1px solid #e0e8eb; border-radius: 10px; padding: 14px; display: grid; gap: 10px; background: #fbfdfd; }
+.region-card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.region-card-header > span { display: flex; align-items: center; gap: 7px; color: #29495c; font-size: 11px; }
+.region-card-header button { display: grid; place-items: center; padding: 5px; border: 0; border-radius: 8px; color: #ad5757; background: #fff1f1; }
+.region-posts { display: flex; flex-wrap: wrap; gap: 7px; }
+.region-post-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid #cedade; border-radius: 99px; color: #365265; font-size: 9px; background: white; }
+.region-post-chip button { display: grid; place-items: center; border: 0; padding: 0; color: #ad5757; background: transparent; }
+.region-post-empty { color: #90a1a9; font-size: 9px; }
+.region-post-add { padding: 0; border-bottom: 0; }
 
 .bi-heading { align-items: flex-end; }
 .report-export-actions { display: flex; gap: 9px; }
@@ -482,10 +492,12 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
 .schedule-contact-group > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .schedule-contact-group strong { color: #29495c; font-size: 11px; }
 .schedule-contact-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(135px, .8fr) 32px; gap: 8px; }
+.schedule-contact-row-training { grid-template-columns: minmax(0, 1.1fr) minmax(125px, .7fr) auto 32px; align-items: center; }
 .schedule-contact-row input, .schedule-contact-row select, .program-row input {
   min-width: 0; height: 39px; padding: 0 10px; border: 1px solid #cedade; border-radius: 8px; color: #263f4f; background: white; outline: 0; font-size: 10px;
 }
 .schedule-contact-row button { display: grid; place-items: center; border: 0; border-radius: 8px; color: #ad5757; background: #fff1f1; }
+.schedule-training-checkbox { display: flex; align-items: center; gap: 6px; color: #415866; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .schedule-program-card { display: grid; gap: 10px; padding: 14px; border: 1px solid #e3eaee; border-radius: 10px; background: #fbfdfd; }
 .schedule-program-card > strong { color: #29495c; font-size: 11px; }
 .schedule-observation-field { margin: 0 !important; }

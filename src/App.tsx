@@ -45,6 +45,8 @@ function scheduleSnapshot(record: ScheduleRecord) {
     osNumber: record.osNumber,
     serviceType: record.serviceType,
     status: record.status,
+    region: record.region,
+    post: record.post,
     dayTsts: record.dayTsts.map((item) => ({ ...item })),
     nightTsts: record.nightTsts.map((item) => ({ ...item })),
     cboSupports: record.cboSupports.map((item) => ({ ...item })),
