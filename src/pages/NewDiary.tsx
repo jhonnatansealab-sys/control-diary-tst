@@ -107,16 +107,16 @@ export function NewDiary({
         <div className="payment-warning-backdrop" role="dialog" aria-modal="true" aria-labelledby="payment-warning-title">
           <section className="payment-warning-modal">
             <span className="payment-warning-icon"><AlertCircle size={46} /></span>
-            <span className="payment-warning-eyebrow">ATENÇÃO, COLABORADOR</span>
+            <span className="payment-warning-eyebrow">LEMBRETE</span>
             <h2 id="payment-warning-title">
-              SE A DIÁRIA NÃO FOR PREENCHIDA, ISSO VAI PREJUDICAR O SEU PAGAMENTO!
+              Não esqueça de preencher sua diária
             </h2>
             <p>
               Preencha o registro corretamente todos os dias, informando turno,
-              atividade e embarcação.
+              atividade e embarcação, para manter seu pagamento em dia.
             </p>
             <button className="button payment-warning-button" onClick={onDismissPaymentWarning}>
-              ESTOU CIENTE. PREENCHER AGORA
+              Entendi, preencher agora
             </button>
           </section>
         </div>

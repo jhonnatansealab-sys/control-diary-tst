@@ -12,6 +12,7 @@ import {
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import sealabLogo from "../assets/sealab-logo.png";
+import { SearchableSelect } from "../components/SearchableSelect";
 import { collaboratorLogin, managerLogin } from "../lib/api";
 import { saveSelfie } from "../lib/storage";
 import { isDemoMode } from "../lib/supabase";
@@ -273,10 +274,12 @@ export function Login({ onLogin, settings }: LoginProps) {
               <p>Selecione seu nome e tire uma foto para registrar este acesso.</p>
               <label className="field login-field">
                 <span>Quem esta acessando? <b>*</b></span>
-                <select value={technician} onChange={(event) => { setTechnician(event.target.value); setPhoto(""); }}>
-                  <option value="">Selecione seu nome</option>
-                  {settings.technicians.map((name) => <option key={name}>{name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={technician}
+                  onChange={(value) => { setTechnician(value); setPhoto(""); }}
+                  options={settings.technicians}
+                  placeholder="Digite para buscar seu nome"
+                />
               </label>
 
               <div className="camera-card">
