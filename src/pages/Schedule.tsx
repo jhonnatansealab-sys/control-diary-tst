@@ -247,7 +247,7 @@ function validateDraft(draft: ScheduleDraft) {
 
 export function Schedule({ user, settings, records, onCreate, onUpdate, onArchive, onDelete, onStatusChange }: ScheduleProps) {
   const canManage = user.role === "admin" || user.role === "supervisor";
-  const canCreate = canManage || user.role === "colaborador";
+  const canCreate = canManage;
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [filters, setFilters] = useState<ScheduleFilters>({

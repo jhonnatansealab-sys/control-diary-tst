@@ -392,7 +392,9 @@ Deno.serve(async (request) => {
       return json({
         records: (records ?? []).map((item) => item.payload),
         requests: (requests ?? []).map((item) => item.payload),
-        scheduleRecords: (scheduleRecords ?? []).map((item) => item.payload),
+        scheduleRecords: session.role === "colaborador"
+          ? []
+          : (scheduleRecords ?? []).map((item) => item.payload),
         reimbursements: (reimbursements ?? []).map((item) => item.payload),
         settings: await getSettings(session.role === "admin"),
       });
@@ -507,12 +509,9 @@ Deno.serve(async (request) => {
     }
 
     if (request.method === "POST" && action === "schedule") {
-      const session = await requireSession(request, ["colaborador", "supervisor", "admin"]);
+      const session = await requireSession(request, ["supervisor", "admin"]);
       const body = await readBody(request);
       const scheduleRecord = body.scheduleRecord;
-      if (session.role === "colaborador" && scheduleRecord) {
-        scheduleRecord.status = "Programado";
-      }
       if (!isValidScheduleRecord(scheduleRecord)) {
         return json({ error: "Agendamento invalido." }, 400);
       }

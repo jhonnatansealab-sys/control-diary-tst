@@ -261,7 +261,7 @@ export default function App() {
   }
 
   async function addScheduleRecord(scheduleRecord: ScheduleRecord) {
-    if (!user || !["colaborador", "supervisor", "admin"].includes(user.role)) return false;
+    if (!user || !["supervisor", "admin"].includes(user.role)) return false;
     if (!isDemoMode) {
       try {
         const response = await createRemoteScheduleRecord(user, scheduleRecord);
@@ -461,7 +461,7 @@ export default function App() {
         <Route
           path="/programacao"
           element={
-            ["colaborador", "financeiro", "supervisor", "admin"].includes(user.role)
+            ["financeiro", "supervisor", "admin"].includes(user.role)
               ? (
                 <Schedule
                   user={user}
