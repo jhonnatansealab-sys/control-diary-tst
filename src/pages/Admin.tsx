@@ -152,7 +152,10 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
     if (isDemoMode) saveSelfies(next);
   }
 
-  const catalog = section === "technicians" ? settings.technicians : section === "vessels" ? settings.vessels : [];
+  const catalog = useMemo(
+    () => section === "technicians" ? settings.technicians : section === "vessels" ? settings.vessels : [],
+    [section, settings.technicians, settings.vessels],
+  );
   const normalizedSearch = normalizeSearch(managementSearch);
   const catalogDuplicateKeys = useMemo(() => duplicateKeys(catalog), [catalog]);
   const filteredCatalog = useMemo(

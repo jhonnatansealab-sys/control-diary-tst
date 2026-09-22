@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock,
   Eye,
+  FileSpreadsheet,
   History,
   MapPin,
   MessageSquare,
@@ -19,7 +20,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type {
   AuthUser,
   ScheduleContact,
@@ -153,6 +154,12 @@ function scheduleSnapshot(record: ScheduleRecord) {
   };
 }
 
+function formatContactsForExport(list: ScheduleContact[]) {
+  return list
+    .map((contact) => `${contact.name}${contact.inTraining ? " (Em treinamento)" : ""}${contact.contact ? ` - ${contact.contact}` : ""}`)
+    .join("; ") || "-";
+}
+
 function listNames(list: ScheduleContact[]) {
   return list.map((person) => person.name).filter(Boolean).join(", ") || "nenhum";
 }
@@ -260,6 +267,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const filteredRecords = useMemo(() => {
     const term = normalizeText(query.trim());
@@ -289,13 +297,8 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
 
   const archivedCount = records.filter((record) => record.archived).length;
 
-  const grouped = useMemo(
-    () => statuses.map((status) => ({
-      status,
-      records: filteredRecords
-        .filter((record) => record.status === status)
-        .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
-    })),
+  const sortedRecords = useMemo(
+    () => [...filteredRecords].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
     [filteredRecords],
   );
 
@@ -379,6 +382,72 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
     setDraft(emptyDraft(settings.vessels, settings.serviceRegions));
   }
 
+  async function exportSchedule() {
+    setExporting(true);
+    try {
+      const ExcelJS = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Controle de Diarias TST";
+      workbook.created = new Date();
+
+      const sheet = workbook.addWorksheet("Atendimentos");
+      sheet.columns = [
+        { header: "OS", key: "os", width: 20 },
+        { header: "Embarcacao", key: "vessel", width: 24 },
+        { header: "Regiao", key: "region", width: 16 },
+        { header: "Posto", key: "post", width: 20 },
+        { header: "Tipo", key: "serviceType", width: 14 },
+        { header: "Status", key: "status", width: 16 },
+        { header: "DataHora", key: "scheduledAt", width: 20 },
+        { header: "Programacao", key: "programs", width: 32 },
+        { header: "TSTsDiurnos", key: "dayTsts", width: 44 },
+        { header: "TSTsNoturnos", key: "nightTsts", width: 44 },
+        { header: "SuporteCBO", key: "cboSupports", width: 44 },
+        { header: "CriadoPor", key: "createdBy", width: 24 },
+        { header: "CriadoEm", key: "createdAt", width: 20 },
+        { header: "Arquivado", key: "archived", width: 12 },
+      ];
+      sortedRecords.forEach((record) => sheet.addRow({
+        os: record.osNumber,
+        vessel: record.vessel,
+        region: record.region,
+        post: record.post,
+        serviceType: record.serviceType,
+        status: record.status,
+        scheduledAt: new Date(record.scheduledAt),
+        programs: record.programs.map((program) => `${program.shift}: ${program.timeRange}`).join(" / "),
+        dayTsts: formatContactsForExport(record.dayTsts),
+        nightTsts: formatContactsForExport(record.nightTsts),
+        cboSupports: formatContactsForExport(record.cboSupports),
+        createdBy: record.createdBy,
+        createdAt: new Date(record.createdAt),
+        archived: record.archived ? "Sim" : "Não",
+      }));
+
+      sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF3734B7" } };
+      sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: sheet.columnCount } };
+      sheet.views = [{ state: "frozen", ySplit: 1 }];
+      const dateTimeColumns = ["scheduledAt", "createdAt"];
+      sheet.columns.forEach((column) => {
+        if (column.key && dateTimeColumns.includes(column.key)) column.numFmt = "dd/mm/yyyy hh:mm";
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `controle-atendimento-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <section className="page-heading heading-with-action schedule-heading">
@@ -391,6 +460,9 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
           <button className={`button ${showArchived ? "button-primary" : "button-secondary"}`} onClick={() => setShowArchived((current) => !current)}>
             {showArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}
             {showArchived ? "Ver ativos" : `Arquivados (${archivedCount})`}
+          </button>
+          <button className="button button-secondary" type="button" disabled={exporting || !sortedRecords.length} onClick={exportSchedule}>
+            <FileSpreadsheet size={18} /> {exporting ? "Exportando..." : "Exportar"}
           </button>
           {canCreate && <button className="button button-primary" onClick={openNewSchedule}><Plus size={18} /> Novo Atendimento</button>}
         </div>
@@ -412,16 +484,24 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
         <span>{filteredRecords.length} de {records.filter((record) => !!record.archived === showArchived).length} atendimentos {showArchived ? "arquivados" : "ativos"} exibidos</span>
       </section>
 
-      <section className="schedule-board schedule-board-full">
-        {grouped.map((column) => (
-          <section className="schedule-column" key={column.status}>
-            <header>
-              <strong>{column.status}</strong>
-              <span>{column.records.length}</span>
-            </header>
-            <div className="schedule-cards">
-              {column.records.map((record) => (
-                <ScheduleCard
+      <section className="panel schedule-table-panel">
+        <div className="schedule-table-wrap">
+          <table className="schedule-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>OS</th>
+                <th>Embarcação</th>
+                <th>Região / Posto</th>
+                <th>Data da solicitação</th>
+                <th>Tipo</th>
+                <th>Programação</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedRecords.map((record) => (
+                <ScheduleTableRow
                   key={record.id}
                   record={record}
                   canManage={canManage}
@@ -435,16 +515,17 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
                   }}
                 />
               ))}
-              {!column.records.length && <div className="schedule-empty">Nenhum atendimento.</div>}
-            </div>
-          </section>
-        ))}
+            </tbody>
+          </table>
+          {!sortedRecords.length && <div className="schedule-empty">Nenhum atendimento.</div>}
+        </div>
       </section>
 
       {selectedRecord && (
         <ScheduleDetailsModal
           record={selectedRecord}
           canManage={canManage}
+          showHistory={user.role !== "colaborador"}
           onClose={() => setSelectedRecord(null)}
           onEdit={() => openEditSchedule(selectedRecord)}
           onArchive={() => setPendingArchive({ record: selectedRecord, archived: !selectedRecord.archived, observation: "" })}
@@ -522,7 +603,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
   );
 }
 
-function ScheduleCard({
+function ScheduleTableRow({
   record,
   canManage,
   onOpen,
@@ -538,41 +619,42 @@ function ScheduleCard({
   onStatusChange: (status: ScheduleStatus) => void;
 }) {
   return (
-    <article className="schedule-card compact-schedule-card" onClick={onOpen}>
-      <div className="schedule-card-top">
-        <span className={`schedule-status ${statusClass(record.status)}`}>{record.archived ? "Arquivado" : record.status}</span>
-        <button className="row-action" type="button" onClick={(event) => { event.stopPropagation(); onOpen(); }}><Eye size={13} /> Abrir</button>
-      </div>
-      <h3>{record.osNumber}</h3>
-      <dl>
-        <div><dt><Ship size={13} /> Embarcação</dt><dd>{record.vessel}</dd></div>
-        <div><dt><CalendarClock size={13} /> Data da solicitação</dt><dd>{formatDateTime(record.scheduledAt)}</dd></div>
-        <div><dt><MapPin size={13} /> Região / Posto</dt><dd>{record.region}{record.post ? ` - ${record.post}` : ""}</dd></div>
-        <div><dt><Clock size={13} /> Programação</dt><dd>{record.programs.map((program) => `${program.shift}: ${program.timeRange}`).join(" / ")}</dd></div>
-      </dl>
-      {canManage && (
-        <div className="schedule-card-actions" onClick={(event) => event.stopPropagation()}>
-          {!record.archived && (
-            <label className="schedule-status-select">
-              <span>Status</span>
-              <select value={record.status} onChange={(event) => onStatusChange(event.target.value as ScheduleStatus)}>
-                {statuses.map((status) => <option key={status}>{status}</option>)}
-              </select>
-            </label>
+    <tr className={`schedule-table-row ${record.status === "Cancelado" ? "schedule-table-row-cancelado" : ""}`}>
+      <td><span className={`schedule-status ${statusClass(record.status)}`}>{record.archived ? "Arquivado" : record.status}</span></td>
+      <td className="schedule-table-os">{record.osNumber}</td>
+      <td>{record.vessel}</td>
+      <td>{record.region}{record.post ? ` - ${record.post}` : ""}</td>
+      <td>{formatDateTime(record.scheduledAt)}</td>
+      <td>{record.serviceType}</td>
+      <td>{record.programs.map((program) => `${program.shift}: ${program.timeRange}`).join(" / ")}</td>
+      <td>
+        <div className="schedule-table-actions">
+          <button className="row-action" type="button" onClick={onOpen}><Eye size={13} /> Abrir</button>
+          {canManage && !record.archived && (
+            <select
+              className="schedule-table-status-select"
+              value={record.status}
+              onChange={(event) => onStatusChange(event.target.value as ScheduleStatus)}
+            >
+              {statuses.map((status) => <option key={status}>{status}</option>)}
+            </select>
           )}
-          <div className="schedule-action-row">
+          {canManage && (
             <button className="row-action" type="button" onClick={onArchive}>{record.archived ? <ArchiveRestore size={13} /> : <Archive size={13} />} {record.archived ? "Restaurar" : "Arquivar"}</button>
+          )}
+          {canManage && (
             <button className="row-action admin-delete-action" type="button" onClick={onDelete}><Trash2 size={13} /> Excluir</button>
-          </div>
+          )}
         </div>
-      )}
-    </article>
+      </td>
+    </tr>
   );
 }
 
 function ScheduleDetailsModal({
   record,
   canManage,
+  showHistory,
   onClose,
   onEdit,
   onArchive,
@@ -580,6 +662,7 @@ function ScheduleDetailsModal({
 }: {
   record: ScheduleRecord;
   canManage: boolean;
+  showHistory: boolean;
   onClose: () => void;
   onEdit: () => void;
   onArchive: () => void;
@@ -608,7 +691,7 @@ function ScheduleDetailsModal({
           <PeopleBlock title="TSTs noturnos" people={record.nightTsts} tone="night" />
           <PeopleBlock title="Suporte da CBO" people={record.cboSupports} tone="support" />
         </div>
-        <ScheduleHistory history={record.changeHistory ?? []} />
+        {showHistory && <ScheduleHistory history={record.changeHistory ?? []} />}
         <div className="form-actions">
           {canManage && !record.archived && <button className="button button-primary" onClick={onEdit}><Pencil size={17} /> Editar</button>}
           {canManage && <button className="button button-secondary" onClick={onArchive}>{record.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />} {record.archived ? "Restaurar" : "Arquivar"}</button>}
@@ -760,6 +843,75 @@ function PeopleBlock({ title, people, tone }: { title: string; people: ScheduleC
   );
 }
 
+function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+        setQuery(value);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [value]);
+
+  const filtered = useMemo(() => {
+    const term = normalizeText(query.trim());
+    if (!term) return options;
+    return options.filter((option) => normalizeText(option).includes(term));
+  }, [options, query]);
+
+  return (
+    <div className="searchable-select" ref={containerRef}>
+      <input
+        value={query}
+        onFocus={() => setOpen(true)}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setOpen(true);
+        }}
+        placeholder={placeholder}
+      />
+      {open && (
+        <div className="searchable-select-options">
+          {filtered.length ? filtered.map((option) => (
+            <button
+              type="button"
+              key={option}
+              className={`searchable-select-option ${option === value ? "selected" : ""}`}
+              onClick={() => {
+                onChange(option);
+                setQuery(option);
+                setOpen(false);
+              }}
+            >
+              {option}
+            </button>
+          )) : <div className="searchable-select-empty">Nenhum resultado encontrado.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ScheduleFormModal({
   draft,
   settings,
@@ -825,7 +977,10 @@ function ScheduleFormModal({
         {error && <div className="error-banner">{error}</div>}
         <div className="schedule-form-body">
           <div className="form-grid">
-            <label className="field"><span>Embarcação</span><select value={draft.vessel} onChange={(event) => patchDraft({ vessel: event.target.value })}>{settings.vessels.map((name) => <option key={name}>{name}</option>)}</select></label>
+            <label className="field">
+              <span>Embarcação</span>
+              <SearchableSelect value={draft.vessel} onChange={(value) => patchDraft({ vessel: value })} options={settings.vessels} placeholder="Digite para buscar a embarcação" />
+            </label>
             <label className="field"><span>Data e hora</span><input type="datetime-local" value={draft.scheduledAt} onChange={(event) => patchDraft({ scheduledAt: event.target.value })} /></label>
             <label className="field"><span>Número da OS</span><input value={draft.osNumber} onChange={(event) => patchDraft({ osNumber: event.target.value })} placeholder="Código da empresa cliente" /></label>
             <label className="field"><span>Tipo de atendimento</span><select value={draft.serviceType} onChange={(event) => patchDraft({ serviceType: event.target.value as ScheduleServiceType })}>{serviceTypes.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -912,10 +1067,7 @@ function ContactGroup({
       {contacts.map((contact) => (
         <div className={`schedule-contact-row ${showTraining ? "schedule-contact-row-training" : ""}`} key={contact.id}>
           {options ? (
-            <select value={contact.name} onChange={(event) => onChange(contact.id, { name: event.target.value })}>
-              <option value="">Nome completo</option>
-              {options.map((name) => <option key={name}>{name}</option>)}
-            </select>
+            <SearchableSelect value={contact.name} onChange={(value) => onChange(contact.id, { name: value })} options={options} placeholder="Digite para buscar o TST" />
           ) : (
             <input value={contact.name} onChange={(event) => onChange(contact.id, { name: event.target.value })} placeholder="Nome completo" />
           )}
