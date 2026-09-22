@@ -228,7 +228,7 @@ function isValidScheduleRecord(record: ScheduleInput | null | undefined) {
     !record?.vessel?.trim() ||
     !record?.scheduledAt ||
     !record?.osNumber?.trim() ||
-    !["Operacional", "DOC&CON"].includes(record.serviceType ?? "") ||
+    !["Operacional", "DOC&CON", "Base"].includes(record.serviceType ?? "") ||
     !["Programado", "Em andamento", "Concluído", "Cancelado"].includes(record.status ?? "") ||
     !Array.isArray(record.programs) ||
     !record.programs.length ||
@@ -340,9 +340,7 @@ Deno.serve(async (request) => {
       return json({
         records: (records ?? []).map((item) => item.payload),
         requests: (requests ?? []).map((item) => item.payload),
-        scheduleRecords: session.role === "colaborador"
-          ? []
-          : (scheduleRecords ?? []).map((item) => item.payload),
+        scheduleRecords: (scheduleRecords ?? []).map((item) => item.payload),
         settings: await getSettings(session.role === "admin"),
       });
     }
@@ -436,9 +434,12 @@ Deno.serve(async (request) => {
     }
 
     if (request.method === "POST" && action === "schedule") {
-      const session = await requireSession(request, ["supervisor", "admin"]);
+      const session = await requireSession(request, ["colaborador", "supervisor", "admin"]);
       const body = await readBody(request);
       const scheduleRecord = body.scheduleRecord;
+      if (session.role === "colaborador" && scheduleRecord) {
+        scheduleRecord.status = "Programado";
+      }
       if (!isValidScheduleRecord(scheduleRecord)) {
         return json({ error: "Agendamento invalido." }, 400);
       }

@@ -46,7 +46,7 @@ export function Layout({ children, user, onLogout }: LayoutProps) {
       ]
     : user.role === "admin" || user.role === "supervisor"
       ? [...baseNav, scheduleNav, analyticsNav, { to: "/administracao", label: "Administracao", icon: Settings }]
-      : baseNav;
+      : [...baseNav, scheduleNav];
 
   return (
     <div className="app-shell">

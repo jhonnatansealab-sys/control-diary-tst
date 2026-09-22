@@ -4,7 +4,7 @@ export type Activity = "Area" | "ADM" | "Não informado";
 export type RecordStatus = "Registrado" | "Solicitacao enviada" | "Corrigido";
 export type RequestStatus = "Pendente" | "Aprovada" | "Rejeitada";
 export type ScheduleStatus = "Programado" | "Em andamento" | "Concluído" | "Cancelado";
-export type ScheduleServiceType = "Operacional" | "DOC&CON";
+export type ScheduleServiceType = "Operacional" | "DOC&CON" | "Base";
 
 export interface AuthUser {
   role: Role;

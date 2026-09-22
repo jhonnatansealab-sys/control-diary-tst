@@ -50,7 +50,7 @@ type ScheduleFilters = {
 };
 
 const statuses: ScheduleStatus[] = ["Programado", "Em andamento", "Concluído", "Cancelado"];
-const serviceTypes: ScheduleServiceType[] = ["Operacional", "DOC&CON"];
+const serviceTypes: ScheduleServiceType[] = ["Operacional", "DOC&CON", "Base"];
 const phonePattern = /^\(\d{2}\)\s\d{5}-\d{4}$/;
 
 function createClientId(prefix: string) {
@@ -224,6 +224,7 @@ function validateDraft(draft: ScheduleDraft) {
 
 export function Schedule({ user, settings, records, onCreate, onUpdate, onArchive, onDelete, onStatusChange }: ScheduleProps) {
   const canManage = user.role === "admin" || user.role === "supervisor";
+  const canCreate = canManage || user.role === "colaborador";
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [filters, setFilters] = useState<ScheduleFilters>({
@@ -373,7 +374,7 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
             {showArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}
             {showArchived ? "Ver ativos" : `Arquivados (${archivedCount})`}
           </button>
-          {canManage && <button className="button button-primary" onClick={openNewSchedule}><Plus size={18} /> Nova Programação</button>}
+          {canCreate && <button className="button button-primary" onClick={openNewSchedule}><Plus size={18} /> Nova Programação</button>}
         </div>
       </section>
 
