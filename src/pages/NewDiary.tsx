@@ -109,11 +109,10 @@ export function NewDiary({
             <span className="payment-warning-icon"><AlertCircle size={46} /></span>
             <span className="payment-warning-eyebrow">LEMBRETE</span>
             <h2 id="payment-warning-title">
-              Não esqueça de preencher sua diária
+              A responsabilidade pelo preenchimento correto em cada atendimento é do colaborador
             </h2>
             <p>
-              Preencha o registro corretamente todos os dias, informando turno,
-              atividade e embarcação, para manter seu pagamento em dia.
+              A ausência de registro impacta diretamente a apuração financeira.
             </p>
             <button className="button payment-warning-button" onClick={onDismissPaymentWarning}>
               Entendi, preencher agora
