@@ -406,15 +406,17 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
 .management-list button { display: grid; place-items: center; padding: 5px; border: 0; color: #ad5757; background: transparent; }
 .compact-empty { padding: 26px 20px 34px; border-top: 1px solid #eef3f5; }
 .reimbursement-receipts { display: grid; gap: 10px; padding: 16px 20px; }
-.reimbursement-receipt-row { display: grid; grid-template-columns: 64px 1fr 32px; gap: 12px; align-items: center; padding: 10px; border: 1px solid #e0e8eb; border-radius: 10px; background: #fbfdfd; }
-.reimbursement-receipt-row img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid #e0e8eb; }
+.reimbursement-receipt-row { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center; padding: 10px; border: 1px solid #e0e8eb; border-radius: 10px; background: #fbfdfd; }
+.reimbursement-receipt-thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid #e0e8eb; cursor: pointer; }
 .reimbursement-receipt-info { display: grid; gap: 6px; min-width: 0; }
 .reimbursement-receipt-info > span { color: #3d5664; font-size: 10px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reimbursement-receipt-info label { display: flex; align-items: center; gap: 8px; }
 .reimbursement-receipt-info label span { color: #7d9099; font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .reimbursement-receipt-info input { width: 120px; height: 34px; padding: 0 9px; border: 1px solid #cedade; border-radius: 8px; color: #263f4f; font-size: 10px; }
 .reimbursement-receipt-info strong { color: #193d56; font-size: 13px; }
-.reimbursement-receipt-row > button { display: grid; place-items: center; border: 0; border-radius: 8px; color: #ad5757; background: #fff1f1; height: 32px; }
+.reimbursement-receipt-actions { display: flex; align-items: center; gap: 6px; }
+.reimbursement-receipt-actions button { display: grid; place-items: center; border: 0; border-radius: 8px; color: #3734b7; background: #ecebff; height: 32px; width: 32px; }
+.reimbursement-receipt-actions button.reimbursement-receipt-remove { color: #ad5757; background: #fff1f1; }
 .reimbursement-upload { display: inline-flex; align-items: center; gap: 8px; width: max-content; margin: 0 20px 16px; cursor: pointer; }
 .reimbursement-total { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid #edf1f3; color: #29495c; font-size: 12px; font-weight: 800; }
 .reimbursement-total strong { font-size: 16px; color: #3734b7; }
@@ -424,6 +426,8 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
 .reimbursement-history-item strong { color: #193d56; }
 .reimbursement-detail-modal { width: min(640px, 100%); max-height: 90vh; overflow-y: auto; }
 .reimbursement-detail-modal > p { color: #536b78; font-size: 11px; margin: 4px 0; }
+.reimbursement-viewer-modal { width: min(720px, 100%); max-height: 90vh; overflow-y: auto; }
+.reimbursement-viewer-image { display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 10px; border: 1px solid #e0e8eb; background: #f1f5f6; }
 .access-list { grid-template-columns: 1fr; }
 .access-list strong, .access-list small { display: block; }
 .access-list small { margin-top: 2px; color: #81939c; font-size: 8px; }

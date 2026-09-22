@@ -1,4 +1,4 @@
-import { FileSpreadsheet, Plus, Receipt, Search, Trash2, X } from "lucide-react";
+import { Download, Eye, FileSpreadsheet, Plus, Receipt, Search, Trash2, X } from "lucide-react";
 import { useMemo, useState, type ChangeEvent } from "react";
 import type { AuthUser, ReimbursementReceipt, ReimbursementRequest, SystemSettings } from "../types";
 
@@ -24,6 +24,13 @@ function formatDateTime(value: string) {
 
 function normalizeText(value: string) {
   return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+function downloadReceipt(receipt: ReimbursementReceipt) {
+  const link = document.createElement("a");
+  link.href = receipt.imageData;
+  link.download = receipt.fileName || `comprovante-${receipt.id}.jpg`;
+  link.click();
 }
 
 function readReceiptImage(file: File) {
@@ -71,6 +78,7 @@ export function Reimbursements({ user, settings, records, onCreate }: Reimbursem
   const [saving, setSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<ReimbursementRequest | null>(null);
+  const [viewingReceipt, setViewingReceipt] = useState<ReimbursementReceipt | null>(null);
   const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState({ technician: "Todos", from: "", to: "" });
   const [query, setQuery] = useState("");
@@ -242,7 +250,12 @@ export function Reimbursements({ user, settings, records, onCreate }: Reimbursem
           <div className="reimbursement-receipts">
             {receipts.map((receipt) => (
               <div className="reimbursement-receipt-row" key={receipt.id}>
-                <img src={receipt.imageData} alt={receipt.fileName ?? "Comprovante"} />
+                <img
+                  src={receipt.imageData}
+                  alt={receipt.fileName ?? "Comprovante"}
+                  className="reimbursement-receipt-thumb"
+                  onClick={() => setViewingReceipt(receipt)}
+                />
                 <div className="reimbursement-receipt-info">
                   <span>{receipt.fileName ?? "Comprovante"}</span>
                   <label>
@@ -256,7 +269,11 @@ export function Reimbursements({ user, settings, records, onCreate }: Reimbursem
                     />
                   </label>
                 </div>
-                <button type="button" onClick={() => removeReceipt(receipt.id)} aria-label="Remover comprovante"><Trash2 size={15} /></button>
+                <div className="reimbursement-receipt-actions">
+                  <button type="button" onClick={() => setViewingReceipt(receipt)} aria-label="Visualizar comprovante"><Eye size={15} /></button>
+                  <button type="button" onClick={() => downloadReceipt(receipt)} aria-label="Baixar comprovante"><Download size={15} /></button>
+                  <button type="button" className="reimbursement-receipt-remove" onClick={() => removeReceipt(receipt.id)} aria-label="Remover comprovante"><Trash2 size={15} /></button>
+                </div>
               </div>
             ))}
             {!receipts.length && <div className="schedule-empty">Nenhum comprovante adicionado ainda.</div>}
@@ -363,10 +380,19 @@ export function Reimbursements({ user, settings, records, onCreate }: Reimbursem
             <div className="reimbursement-receipts">
               {selectedRequest.receipts.map((receipt) => (
                 <div className="reimbursement-receipt-row" key={receipt.id}>
-                  <img src={receipt.imageData} alt={receipt.fileName ?? "Comprovante"} />
+                  <img
+                    src={receipt.imageData}
+                    alt={receipt.fileName ?? "Comprovante"}
+                    className="reimbursement-receipt-thumb"
+                    onClick={() => setViewingReceipt(receipt)}
+                  />
                   <div className="reimbursement-receipt-info">
                     <span>{receipt.fileName ?? "Comprovante"}</span>
                     <strong>{currency(receipt.value)}</strong>
+                  </div>
+                  <div className="reimbursement-receipt-actions">
+                    <button type="button" onClick={() => setViewingReceipt(receipt)} aria-label="Visualizar comprovante"><Eye size={15} /></button>
+                    <button type="button" onClick={() => downloadReceipt(receipt)} aria-label="Baixar comprovante"><Download size={15} /></button>
                   </div>
                 </div>
               ))}
@@ -374,6 +400,24 @@ export function Reimbursements({ user, settings, records, onCreate }: Reimbursem
             <div className="reimbursement-total"><span>Total</span><strong>{currency(selectedRequest.total)}</strong></div>
             <div className="form-actions">
               <button className="button button-secondary" onClick={() => setSelectedRequest(null)}>Fechar</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {viewingReceipt && (
+        <div className="modal-backdrop" onClick={() => setViewingReceipt(null)}>
+          <section className="modal reimbursement-viewer-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div><span className="eyebrow">COMPROVANTE</span><h2>{viewingReceipt.fileName ?? "Comprovante"}</h2></div>
+              <button className="icon-button" onClick={() => setViewingReceipt(null)}><X size={20} /></button>
+            </div>
+            <img className="reimbursement-viewer-image" src={viewingReceipt.imageData} alt={viewingReceipt.fileName ?? "Comprovante"} />
+            <div className="form-actions">
+              <button className="button button-secondary" type="button" onClick={() => downloadReceipt(viewingReceipt)}>
+                <Download size={16} /> Baixar
+              </button>
+              <button className="button button-secondary" type="button" onClick={() => setViewingReceipt(null)}>Fechar</button>
             </div>
           </section>
         </div>
