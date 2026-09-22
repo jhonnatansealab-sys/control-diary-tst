@@ -2,6 +2,7 @@ import type {
   AuthUser,
   DiaryRecord,
   EditRequest,
+  ReimbursementRequest,
   Role,
   ScheduleRecord,
   ScheduleStatus,
@@ -14,6 +15,7 @@ interface RemoteState {
   records: DiaryRecord[];
   requests: EditRequest[];
   scheduleRecords: ScheduleRecord[];
+  reimbursements: ReimbursementRequest[];
   settings: SystemSettings;
 }
 
@@ -161,6 +163,14 @@ export async function deleteRemoteScheduleRecord(user: AuthUser, id: string) {
     const body = await response.json().catch(() => ({ error: "Falha ao excluir programação." }));
     throw new Error(body.error || "Falha ao excluir programação.");
   }
+}
+
+export async function createRemoteReimbursement(user: AuthUser, reimbursementRequest: ReimbursementRequest) {
+  return request<{ request: ReimbursementRequest }>(
+    "reimbursement",
+    { method: "POST", body: JSON.stringify({ request: reimbursementRequest }) },
+    user.sessionToken,
+  );
 }
 
 export async function updateRemoteRequest(

@@ -7,6 +7,7 @@ import {
   LogOut,
   Menu,
   PlusCircle,
+  Receipt,
   Settings,
   ShieldCheck,
   X,
@@ -31,6 +32,7 @@ const baseNav = [
 ];
 const analyticsNav = { to: "/relatorios", label: "Metricas", icon: BarChart3 };
 const scheduleNav = { to: "/programacao", label: "Controle de Atendimento", icon: CalendarClock };
+const reimbursementNav = { to: "/reembolsos", label: "Reembolsos", icon: Receipt };
 
 function initials(name: string) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
@@ -43,10 +45,11 @@ export function Layout({ children, user, onLogout }: LayoutProps) {
         { to: "/registros", label: "Registros", icon: ClipboardList },
         analyticsNav,
         scheduleNav,
+        reimbursementNav,
       ]
     : user.role === "admin" || user.role === "supervisor"
-      ? [...baseNav, scheduleNav, analyticsNav, { to: "/administracao", label: "Administracao", icon: Settings }]
-      : [...baseNav, scheduleNav];
+      ? [...baseNav, scheduleNav, reimbursementNav, analyticsNav, { to: "/administracao", label: "Administracao", icon: Settings }]
+      : [...baseNav, scheduleNav, reimbursementNav];
 
   return (
     <div className="app-shell">

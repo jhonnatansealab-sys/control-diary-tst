@@ -233,6 +233,38 @@ function isValidTstList(contacts: ScheduleContactInput[] | undefined) {
     contacts.every((contact) => !!contact?.name?.trim() && (!contact.contact || isValidPhone(contact.contact)));
 }
 
+interface ReceiptInput {
+  id?: string;
+  imageData?: string;
+  fileName?: string;
+  value?: number;
+}
+
+interface ReimbursementInput {
+  id?: string;
+  technician?: string;
+  receipts?: ReceiptInput[];
+  notes?: string;
+}
+
+function isValidReimbursement(request: ReimbursementInput | null | undefined) {
+  if (
+    !request?.id ||
+    !request?.technician?.trim() ||
+    !Array.isArray(request.receipts) ||
+    !request.receipts.length
+  ) {
+    return false;
+  }
+  return request.receipts.every((receipt) =>
+    !!receipt?.id &&
+    typeof receipt.imageData === "string" &&
+    receipt.imageData.startsWith("data:image/") &&
+    typeof receipt.value === "number" &&
+    receipt.value > 0
+  );
+}
+
 function isValidScheduleRecord(record: ScheduleInput | null | undefined) {
   if (
     !record?.id ||
@@ -338,22 +370,30 @@ Deno.serve(async (request) => {
         .from("app_schedule_records")
         .select("payload")
         .order("scheduled_at", { ascending: true });
+      let reimbursementsQuery = supabase
+        .from("app_reimbursement_requests")
+        .select("payload")
+        .order("created_at", { ascending: false });
       if (session.role === "colaborador") {
         recordsQuery = recordsQuery.eq("technician", session.name);
         requestsQuery = requestsQuery.eq("technician", session.name);
+        reimbursementsQuery = reimbursementsQuery.eq("technician", session.name);
       }
       const [
         { data: records, error: recordsError },
         { data: requests, error: requestsError },
         { data: scheduleRecords, error: scheduleError },
-      ] = await Promise.all([recordsQuery, requestsQuery, scheduleQuery]);
+        { data: reimbursements, error: reimbursementsError },
+      ] = await Promise.all([recordsQuery, requestsQuery, scheduleQuery, reimbursementsQuery]);
       if (recordsError) throw recordsError;
       if (requestsError) throw requestsError;
       if (scheduleError) throw scheduleError;
+      if (reimbursementsError) throw reimbursementsError;
       return json({
         records: (records ?? []).map((item) => item.payload),
         requests: (requests ?? []).map((item) => item.payload),
         scheduleRecords: (scheduleRecords ?? []).map((item) => item.payload),
+        reimbursements: (reimbursements ?? []).map((item) => item.payload),
         settings: await getSettings(session.role === "admin"),
       });
     }
@@ -444,6 +484,26 @@ Deno.serve(async (request) => {
       if (requestError) throw requestError;
       if (recordError) throw recordError;
       return json({ request: editRequest });
+    }
+
+    if (request.method === "POST" && action === "reimbursement") {
+      const session = await requireSession(request, ["colaborador"]);
+      const body = await readBody(request);
+      const reimbursementRequest = body.request as ReimbursementInput | undefined;
+      if (reimbursementRequest) reimbursementRequest.technician = session.name;
+      if (!isValidReimbursement(reimbursementRequest)) {
+        return json({ error: "Solicitacao de reembolso invalida." }, 400);
+      }
+      const total = reimbursementRequest!.receipts!.reduce((sum, receipt) => sum + (receipt.value ?? 0), 0);
+      const finalRequest = { ...reimbursementRequest, total, createdAt: new Date().toISOString() };
+      const { error } = await supabase.from("app_reimbursement_requests").insert({
+        id: finalRequest.id,
+        technician: finalRequest.technician,
+        total,
+        payload: finalRequest,
+      });
+      if (error) throw error;
+      return json({ request: finalRequest }, 201);
     }
 
     if (request.method === "POST" && action === "schedule") {

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import {
   createRemoteRecord,
+  createRemoteReimbursement,
   createRemoteRequest,
   createRemoteScheduleRecord,
   deleteRemoteRecord,
@@ -17,11 +18,13 @@ import {
 } from "./lib/api";
 import {
   loadRecords,
+  loadReimbursements,
   loadRequests,
   loadScheduleRecords,
   loadSessionFromBrowser,
   loadSettings,
   saveRecords,
+  saveReimbursements,
   saveRequests,
   saveScheduleRecords,
   saveSession,
@@ -33,10 +36,11 @@ import { Analytics } from "./pages/Analytics";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
 import { NewDiary } from "./pages/NewDiary";
+import { Reimbursements } from "./pages/Reimbursements";
 import { Schedule } from "./pages/Schedule";
 import { Records } from "./pages/Records";
 import { Requests } from "./pages/Requests";
-import type { AuthUser, DiaryRecord, EditRequest, ScheduleChangeLog, ScheduleRecord, ScheduleStatus } from "./types";
+import type { AuthUser, DiaryRecord, EditRequest, ReimbursementRequest, ScheduleChangeLog, ScheduleRecord, ScheduleStatus } from "./types";
 
 function scheduleSnapshot(record: ScheduleRecord) {
   return {
@@ -80,6 +84,7 @@ export default function App() {
   const [records, setRecords] = useState<DiaryRecord[]>(isDemoMode ? loadRecords() : []);
   const [requests, setRequests] = useState<EditRequest[]>(isDemoMode ? loadRequests() : []);
   const [scheduleRecords, setScheduleRecords] = useState<ScheduleRecord[]>(isDemoMode ? loadScheduleRecords() : []);
+  const [reimbursements, setReimbursements] = useState<ReimbursementRequest[]>(isDemoMode ? loadReimbursements() : []);
   const [settings, setSettings] = useState(loadSettings);
   const [remoteError, setRemoteError] = useState("");
 
@@ -94,6 +99,10 @@ export default function App() {
   useEffect(() => {
     if (isDemoMode) saveScheduleRecords(scheduleRecords);
   }, [scheduleRecords]);
+
+  useEffect(() => {
+    if (isDemoMode) saveReimbursements(reimbursements);
+  }, [reimbursements]);
 
   useEffect(() => {
     if (isDemoMode) saveSettings(settings);
@@ -113,6 +122,7 @@ export default function App() {
         setRecords(state.records);
         setRequests(state.requests);
         setScheduleRecords(state.scheduleRecords ?? []);
+        setReimbursements(state.reimbursements ?? []);
         setSettings(state.settings);
         setRemoteError("");
       })
@@ -369,6 +379,22 @@ export default function App() {
     return true;
   }
 
+  async function addReimbursement(request: ReimbursementRequest) {
+    if (!user || user.role !== "colaborador") return false;
+    if (!isDemoMode) {
+      try {
+        const response = await createRemoteReimbursement(user, request);
+        request = response.request;
+        setRemoteError("");
+      } catch (error) {
+        setRemoteError((error as Error).message);
+        return false;
+      }
+    }
+    setReimbursements((current) => [request, ...current]);
+    return true;
+  }
+
   async function changeSettings(nextSettings: typeof settings) {
     if (!isDemoMode && user) {
       try {
@@ -449,6 +475,17 @@ export default function App() {
                 />
               )
               : <Navigate to="/" replace />
+          }
+        />
+        <Route
+          path="/reembolsos"
+          element={
+            <Reimbursements
+              user={user}
+              settings={settings}
+              records={reimbursements}
+              onCreate={addReimbursement}
+            />
           }
         />
         <Route path="/administracao" element={["supervisor", "admin"].includes(user.role) ? <Admin user={user} settings={settings} onSettingsChange={changeSettings} /> : <Navigate to="/" replace />} />

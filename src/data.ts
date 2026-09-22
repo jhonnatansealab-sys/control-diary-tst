@@ -1,4 +1,4 @@
-import type { DiaryRecord, EditRequest, ScheduleRecord, ServiceRegion, SystemSettings } from "./types";
+import type { DiaryRecord, EditRequest, ReimbursementRequest, ScheduleRecord, ServiceRegion, SystemSettings } from "./types";
 
 export const initialTechnicians = [
   "ANDRÉ VINICIUS DE OLIVEIRA PEREIRA",
@@ -212,6 +212,8 @@ export const demoScheduleRecords: ScheduleRecord[] = [
     changeHistory: [],
   },
 ];
+
+export const demoReimbursements: ReimbursementRequest[] = [];
 
 export const defaultSettings: SystemSettings = {
   technicians: initialTechnicians,

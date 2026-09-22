@@ -1,9 +1,10 @@
-import { defaultSettings, demoRecords, demoRequests, demoScheduleRecords } from "../data";
-import type { AuthUser, DiaryRecord, EditRequest, ScheduleRecord, SelfieRecord, SystemSettings } from "../types";
+import { defaultSettings, demoRecords, demoReimbursements, demoRequests, demoScheduleRecords } from "../data";
+import type { AuthUser, DiaryRecord, EditRequest, ReimbursementRequest, ScheduleRecord, SelfieRecord, SystemSettings } from "../types";
 
 const RECORDS_KEY = "tst-diary-records";
 const REQUESTS_KEY = "tst-diary-requests";
 const SCHEDULE_KEY = "tst-schedule-records";
+const REIMBURSEMENTS_KEY = "tst-reimbursement-requests";
 const SESSION_KEY = "tst-diary-session";
 const SELFIES_KEY = "tst-diary-selfies";
 const SETTINGS_KEY = "tst-diary-settings";
@@ -56,6 +57,14 @@ export function loadScheduleRecords(): ScheduleRecord[] {
 
 export function saveScheduleRecords(records: ScheduleRecord[]) {
   write(SCHEDULE_KEY, records);
+}
+
+export function loadReimbursements(): ReimbursementRequest[] {
+  return read(REIMBURSEMENTS_KEY, demoReimbursements);
+}
+
+export function saveReimbursements(requests: ReimbursementRequest[]) {
+  write(REIMBURSEMENTS_KEY, requests);
 }
 
 export function saveSession(user: AuthUser | null) {

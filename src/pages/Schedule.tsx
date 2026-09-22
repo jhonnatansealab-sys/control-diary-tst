@@ -75,9 +75,9 @@ function defaultProgram(shift: "Diurno" | "Noturno"): ScheduleProgramTurn {
   };
 }
 
-function emptyDraft(vessels: string[], regions: ServiceRegion[]): ScheduleDraft {
+function emptyDraft(_vessels: string[], regions: ServiceRegion[]): ScheduleDraft {
   return {
-    vessel: vessels[0] ?? "",
+    vessel: "",
     scheduledAt: "",
     osNumber: "",
     serviceType: "Operacional",

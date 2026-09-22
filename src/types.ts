@@ -130,3 +130,19 @@ export interface ScheduleRecord {
   archivedBy?: string;
   changeHistory?: ScheduleChangeLog[];
 }
+
+export interface ReimbursementReceipt {
+  id: string;
+  imageData: string;
+  fileName?: string;
+  value: number;
+}
+
+export interface ReimbursementRequest {
+  id: string;
+  technician: string;
+  receipts: ReimbursementReceipt[];
+  total: number;
+  notes?: string;
+  createdAt: string;
+}
