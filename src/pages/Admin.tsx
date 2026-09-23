@@ -1,9 +1,10 @@
-import { Camera, Filter, MapPin, Plus, Search, Ship, Trash2, UserCog, Users } from "lucide-react";
+import { Camera, Filter, MapPin, Phone, Plus, Search, Ship, Trash2, UserCog, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { deleteRemoteSelfie, fetchRemoteSelfies } from "../lib/api";
+import { normalizePhone, phonePattern } from "../lib/phone";
 import { loadSelfies, saveSelfies } from "../lib/storage";
 import { isDemoMode } from "../lib/supabase";
-import type { AccessAccount, AuthUser, Role, SelfieRecord, ServiceRegion, SystemSettings } from "../types";
+import type { AccessAccount, AuthUser, Role, SelfieRecord, ServiceRegion, SupportContact, SystemSettings } from "../types";
 
 interface AdminProps {
   user: AuthUser;
@@ -11,7 +12,7 @@ interface AdminProps {
   onSettingsChange: (settings: SystemSettings) => void | Promise<void>;
 }
 
-type AdminSection = "technicians" | "vessels" | "regions" | "access";
+type AdminSection = "technicians" | "vessels" | "regions" | "supports" | "access";
 type ManagementFilter = "all" | "contains" | "exact" | "possibleDuplicates" | "supervisor" | "financeiro" | "admin" | "active" | "inactive";
 
 function normalizeSearch(value: string) {
@@ -21,6 +22,25 @@ function normalizeSearch(value: string) {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ");
+}
+
+function PhoneField({ value, onCommit }: { value: string; onCommit: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  return (
+    <input
+      className="management-phone-input"
+      value={draft}
+      onChange={(event) => setDraft(normalizePhone(event.target.value))}
+      onBlur={() => { if (draft !== value) onCommit(draft); }}
+      onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+      placeholder="(21) 99999-9999"
+    />
+  );
 }
 
 function duplicateKeys(values: string[]) {
@@ -35,6 +55,7 @@ function duplicateKeys(values: string[]) {
 export function Admin({ user, settings, onSettingsChange }: AdminProps) {
   const [section, setSection] = useState<AdminSection>("technicians");
   const [newItem, setNewItem] = useState("");
+  const [newPhone, setNewPhone] = useState("");
   const [managementSearch, setManagementSearch] = useState("");
   const [managementFilter, setManagementFilter] = useState<ManagementFilter>("all");
   const [managementMessage, setManagementMessage] = useState("");
@@ -56,6 +77,7 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
     setManagementFilter("all");
     setManagementMessage("");
     setNewItem("");
+    setNewPhone("");
   }, [section]);
 
   function addCatalogItem() {
@@ -66,7 +88,26 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
         setManagementMessage("Este técnico já parece estar cadastrado. Use a busca para conferir antes de adicionar novamente.");
         return;
       }
-      onSettingsChange({ ...settings, technicians: [...new Set([...settings.technicians, value])].sort() });
+      if (newPhone && !phonePattern.test(newPhone)) {
+        setManagementMessage("Informe o telefone no formato (21) 99999-9999 ou deixe em branco.");
+        return;
+      }
+      onSettingsChange({
+        ...settings,
+        technicians: [...new Set([...settings.technicians, value])].sort(),
+        technicianContacts: newPhone ? { ...settings.technicianContacts, [value]: newPhone } : settings.technicianContacts,
+      });
+    } else if (section === "supports") {
+      if (!phonePattern.test(newPhone)) {
+        setManagementMessage("Informe o nome e o telefone no formato (21) 99999-9999.");
+        return;
+      }
+      if (settings.cboSupports.some((item) => normalizeSearch(item.name) === normalizeSearch(value))) {
+        setManagementMessage("Este suporte já está cadastrado.");
+        return;
+      }
+      const support: SupportContact = { id: `support-${Date.now()}`, name: value, contact: newPhone };
+      onSettingsChange({ ...settings, cboSupports: [...settings.cboSupports, support] });
     } else if (section === "vessels") {
       const vesselName = value.toUpperCase();
       if (settings.vessels.some((item) => normalizeSearch(item) === normalizeSearch(vesselName))) {
@@ -83,12 +124,47 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
       onSettingsChange({ ...settings, serviceRegions: [...settings.serviceRegions, region] });
     }
     setNewItem("");
+    setNewPhone("");
     setManagementMessage("");
+  }
+
+  function updateTechnicianPhone(name: string, phone: string) {
+    if (phone && !phonePattern.test(phone)) {
+      setManagementMessage("Telefone inválido. Use o formato (21) 99999-9999.");
+      return;
+    }
+    const contacts = { ...settings.technicianContacts };
+    if (phone) contacts[name] = phone;
+    else delete contacts[name];
+    setManagementMessage("");
+    onSettingsChange({ ...settings, technicianContacts: contacts });
+  }
+
+  function updateSupportPhone(id: string, phone: string) {
+    if (!phonePattern.test(phone)) {
+      setManagementMessage("Telefone inválido. Use o formato (21) 99999-9999.");
+      return;
+    }
+    setManagementMessage("");
+    onSettingsChange({
+      ...settings,
+      cboSupports: settings.cboSupports.map((item) => (item.id === id ? { ...item, contact: phone } : item)),
+    });
+  }
+
+  function removeSupport(id: string) {
+    onSettingsChange({ ...settings, cboSupports: settings.cboSupports.filter((item) => item.id !== id) });
   }
 
   function removeCatalogItem(value: string) {
     if (section === "technicians") {
-      onSettingsChange({ ...settings, technicians: settings.technicians.filter((item) => item !== value) });
+      const contacts = { ...settings.technicianContacts };
+      delete contacts[value];
+      onSettingsChange({
+        ...settings,
+        technicians: settings.technicians.filter((item) => item !== value),
+        technicianContacts: contacts,
+      });
     } else {
       onSettingsChange({ ...settings, vessels: settings.vessels.filter((item) => item !== value) });
     }
@@ -190,12 +266,16 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
     ? filteredAccounts.length
     : section === "regions"
       ? settings.serviceRegions.length
-      : filteredCatalog.length;
+      : section === "supports"
+        ? settings.cboSupports.length
+        : filteredCatalog.length;
   const totalCount = section === "access"
     ? settings.accessAccounts.length
     : section === "regions"
       ? settings.serviceRegions.length
-      : catalog.length;
+      : section === "supports"
+        ? settings.cboSupports.length
+        : catalog.length;
   const searchPlaceholder = section === "technicians"
     ? "Pesquisar técnico cadastrado"
     : section === "vessels"
@@ -219,6 +299,9 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
         <button className={`admin-card ${section === "regions" ? "selected" : ""}`} onClick={() => setSection("regions")}>
           <span className="admin-icon"><MapPin size={24} /></span><div><strong>{settings.serviceRegions.length}</strong><span>Regiões cadastradas</span></div><b>Gerenciar regiões e postos</b>
         </button>
+        <button className={`admin-card ${section === "supports" ? "selected" : ""}`} onClick={() => setSection("supports")}>
+          <span className="admin-icon"><Phone size={24} /></span><div><strong>{settings.cboSupports.length}</strong><span>Suportes cadastrados</span></div><b>Gerenciar suportes CBO</b>
+        </button>
         {isSystemAdmin && (
           <button className={`admin-card ${section === "access" ? "selected" : ""}`} onClick={() => setSection("access")}>
             <span className="admin-icon"><UserCog size={24} /></span><div><strong>{settings.accessAccounts.length}</strong><span>Acessos configurados</span></div><b>Gerenciar acessos</b>
@@ -228,9 +311,9 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
 
       <section className="panel management-panel">
         <div className="panel-header">
-          <div><h2>{section === "technicians" ? "Técnicos" : section === "vessels" ? "Embarcações" : section === "regions" ? "Regiões e postos de atendimento" : "Contas de acesso"}</h2><p>As alterações são aplicadas imediatamente aos formulários e ao login.</p></div>
+          <div><h2>{section === "technicians" ? "Técnicos" : section === "vessels" ? "Embarcações" : section === "regions" ? "Regiões e postos de atendimento" : section === "supports" ? "Suportes da CBO" : "Contas de acesso"}</h2><p>As alterações são aplicadas imediatamente aos formulários e ao login.</p></div>
         </div>
-        {section !== "regions" && (
+        {section !== "regions" && section !== "supports" && (
           <div className="management-tools">
             <label className="search-field">
               <Search size={17} />
@@ -300,14 +383,33 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
               {!settings.serviceRegions.length && <div className="empty-state compact-empty"><Search size={24} /><strong>Nenhuma região cadastrada</strong><span>Adicione uma região para começar a cadastrar os postos de atendimento.</span></div>}
             </div>
           </>
+        ) : section === "supports" ? (
+          <>
+            <div className="management-add">
+              <input value={newItem} onChange={(event) => setNewItem(event.target.value)} placeholder="Nome completo do suporte" onKeyDown={(event) => event.key === "Enter" && addCatalogItem()} />
+              <input className="management-phone-input" value={newPhone} onChange={(event) => setNewPhone(normalizePhone(event.target.value))} placeholder="(21) 99999-9999" onKeyDown={(event) => event.key === "Enter" && addCatalogItem()} />
+              <button className="button button-primary" onClick={addCatalogItem}><Plus size={17} /> Adicionar suporte</button>
+            </div>
+            <div className="management-list">
+              {settings.cboSupports.map((item) => (
+                <div key={item.id}>
+                  <span>{item.name}</span>
+                  <PhoneField value={item.contact} onCommit={(phone) => updateSupportPhone(item.id, phone)} />
+                  <button onClick={() => removeSupport(item.id)} aria-label={`Remover ${item.name}`}><Trash2 size={16} /></button>
+                </div>
+              ))}
+            </div>
+            {!settings.cboSupports.length && <div className="empty-state compact-empty"><Phone size={24} /><strong>Nenhum suporte cadastrado</strong><span>Cadastre os suportes da CBO com nome e telefone para preencher automaticamente os atendimentos.</span></div>}
+          </>
         ) : section !== "access" ? (
           <>
             <div className="management-add">
               <input value={newItem} onChange={(event) => setNewItem(event.target.value)} placeholder={section === "technicians" ? "Nome completo do técnico" : "Nome da embarcação"} onKeyDown={(event) => event.key === "Enter" && addCatalogItem()} />
+              {section === "technicians" && <input className="management-phone-input" value={newPhone} onChange={(event) => setNewPhone(normalizePhone(event.target.value))} placeholder="(21) 99999-9999 (opcional)" onKeyDown={(event) => event.key === "Enter" && addCatalogItem()} />}
               <button className="button button-primary" onClick={addCatalogItem}><Plus size={17} /> Adicionar</button>
             </div>
             <div className="management-list">
-              {filteredCatalog.map((item) => <div key={item}><span>{item}</span><button onClick={() => removeCatalogItem(item)} aria-label={`Remover ${item}`}><Trash2 size={16} /></button></div>)}
+              {filteredCatalog.map((item) => <div key={item}><span>{item}</span>{section === "technicians" && <PhoneField value={settings.technicianContacts[item] ?? ""} onCommit={(phone) => updateTechnicianPhone(item, phone)} />}<button onClick={() => removeCatalogItem(item)} aria-label={`Remover ${item}`}><Trash2 size={16} /></button></div>)}
             </div>
             {!filteredCatalog.length && <div className="empty-state compact-empty"><Search size={24} /><strong>Nenhum item encontrado</strong><span>Ajuste a busca ou o filtro para conferir os cadastros.</span></div>}
           </>

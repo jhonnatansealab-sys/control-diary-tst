@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { SearchableSelect } from "../components/SearchableSelect";
+import { normalizePhone, phonePattern } from "../lib/phone";
 import type {
   AuthUser,
   ScheduleContact,
@@ -56,7 +57,6 @@ type ScheduleFilters = {
 
 const statuses: ScheduleStatus[] = ["Programado", "Em andamento", "Concluído", "Cancelado"];
 const serviceTypes: ScheduleServiceType[] = ["Operacional", "DOC&CON", "Base"];
-const phonePattern = /^\(\d{2}\)\s\d{5}-\d{4}$/;
 
 function createClientId(prefix: string) {
   const random = typeof crypto.randomUUID === "function"
@@ -122,13 +122,6 @@ function formatDateTime(value: string) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(new Date(value));
-}
-
-function normalizePhone(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 11);
-  if (digits.length <= 2) return digits ? `(${digits}` : "";
-  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
 function normalizeText(value: string) {
@@ -872,8 +865,18 @@ function ScheduleFormModal({
   }
 
   function updateContact(key: "dayTsts" | "nightTsts" | "cboSupports", id: string, patch: Partial<ScheduleContact>) {
+    const nextPatch = { ...patch };
+    if (patch.name !== undefined) {
+      if (key === "cboSupports") {
+        const typed = normalizeText(patch.name.trim());
+        const known = typed ? settings.cboSupports.find((item) => normalizeText(item.name) === typed) : undefined;
+        if (known) nextPatch.contact = known.contact;
+      } else {
+        nextPatch.contact = settings.technicianContacts[patch.name] ?? "";
+      }
+    }
     patchDraft({
-      [key]: draft[key].map((contact) => (contact.id === id ? { ...contact, ...patch } : contact)),
+      [key]: draft[key].map((contact) => (contact.id === id ? { ...contact, ...nextPatch } : contact)),
     });
   }
 
@@ -942,7 +945,7 @@ function ScheduleFormModal({
           </div>
           <ContactGroup title="TSTs diurnos" options={settings.technicians} contacts={draft.dayTsts} showTraining onAdd={() => addContact("dayTsts", "day")} onRemove={(id) => removeContact("dayTsts", id)} onChange={(id, patch) => updateContact("dayTsts", id, patch)} />
           <ContactGroup title="TSTs noturnos" options={settings.technicians} contacts={draft.nightTsts} showTraining onAdd={() => addContact("nightTsts", "night")} onRemove={(id) => removeContact("nightTsts", id)} onChange={(id, patch) => updateContact("nightTsts", id, patch)} />
-          <ContactGroup title="Suporte da CBO" contacts={draft.cboSupports} onAdd={() => addContact("cboSupports", "cbo")} onRemove={(id) => removeContact("cboSupports", id)} onChange={(id, patch) => updateContact("cboSupports", id, patch)} />
+          <ContactGroup title="Suporte da CBO" options={settings.cboSupports.map((item) => item.name)} allowCustom contacts={draft.cboSupports} onAdd={() => addContact("cboSupports", "cbo")} onRemove={(id) => removeContact("cboSupports", id)} onChange={(id, patch) => updateContact("cboSupports", id, patch)} />
           {editing && (
             <label className="field schedule-observation-field">
               <span>Observação da mudança</span>
@@ -981,6 +984,7 @@ function ContactGroup({
   options,
   contacts,
   showTraining,
+  allowCustom,
   onAdd,
   onRemove,
   onChange,
@@ -989,6 +993,7 @@ function ContactGroup({
   options?: string[];
   contacts: ScheduleContact[];
   showTraining?: boolean;
+  allowCustom?: boolean;
   onAdd: () => void;
   onRemove: (id: string) => void;
   onChange: (id: string, patch: Partial<ScheduleContact>) => void;
@@ -999,7 +1004,7 @@ function ContactGroup({
       {contacts.map((contact) => (
         <div className={`schedule-contact-row ${showTraining ? "schedule-contact-row-training" : ""}`} key={contact.id}>
           {options ? (
-            <SearchableSelect value={contact.name} onChange={(value) => onChange(contact.id, { name: value })} options={options} placeholder="Digite para buscar o TST" />
+            <SearchableSelect value={contact.name} onChange={(value) => onChange(contact.id, { name: value })} options={options} allowCustom={allowCustom} placeholder={allowCustom ? "Digite ou selecione o suporte" : "Digite para buscar o TST"} />
           ) : (
             <input value={contact.name} onChange={(event) => onChange(contact.id, { name: event.target.value })} placeholder="Nome completo" />
           )}

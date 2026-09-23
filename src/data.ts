@@ -217,6 +217,8 @@ export const demoReimbursements: ReimbursementRequest[] = [];
 
 export const defaultSettings: SystemSettings = {
   technicians: initialTechnicians,
+  technicianContacts: {},
+  cboSupports: [],
   vessels: initialVessels,
   accessAccounts: [
     {

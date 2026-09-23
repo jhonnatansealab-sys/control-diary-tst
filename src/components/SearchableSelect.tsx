@@ -9,11 +9,13 @@ export function SearchableSelect({
   onChange,
   options,
   placeholder,
+  allowCustom = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: string[];
   placeholder?: string;
+  allowCustom?: boolean;
 }) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
@@ -48,6 +50,7 @@ export function SearchableSelect({
         onChange={(event) => {
           setQuery(event.target.value);
           setOpen(true);
+          if (allowCustom) onChange(event.target.value);
         }}
         placeholder={placeholder}
       />
@@ -66,7 +69,7 @@ export function SearchableSelect({
             >
               {option}
             </button>
-          )) : <div className="searchable-select-empty">Nenhum resultado encontrado.</div>}
+          )) : <div className="searchable-select-empty">{allowCustom ? "Nenhum cadastro encontrado. O nome digitado será usado." : "Nenhum resultado encontrado."}</div>}
         </div>
       )}
     </div>

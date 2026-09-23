@@ -107,6 +107,8 @@ export function loadSettings(): SystemSettings {
   const hasFinancial = accounts.some((account) => account.role === "financeiro");
   return {
     technicians: saved.technicians?.length ? saved.technicians : defaultSettings.technicians,
+    technicianContacts: saved.technicianContacts ?? {},
+    cboSupports: saved.cboSupports ?? [],
     vessels: saved.vessels?.length ? saved.vessels : defaultSettings.vessels,
     accessAccounts: hasFinancial
       ? accounts

@@ -71,7 +71,7 @@ async function getSettings(includeAdminSettings = false) {
     await Promise.all([
       supabase
         .from("app_settings")
-        .select("technicians,vessels,allow_selfie_deletion,service_regions")
+        .select("technicians,vessels,allow_selfie_deletion,service_regions,technician_contacts,cbo_supports")
         .eq("id", true)
         .single(),
       includeAdminSettings
@@ -87,6 +87,8 @@ async function getSettings(includeAdminSettings = false) {
     technicians: settings.technicians,
     vessels: settings.vessels,
     serviceRegions: settings.service_regions ?? [],
+    technicianContacts: settings.technician_contacts ?? {},
+    cboSupports: settings.cbo_supports ?? [],
     allowSelfieDeletion: includeAdminSettings ? settings.allow_selfie_deletion : false,
     accessAccounts: (accounts ?? []).map((account) => ({ ...account, password: "" })),
   };
@@ -736,6 +738,28 @@ Deno.serve(async (request) => {
       ) {
         return json({ error: "Configuracoes invalidas." }, 400);
       }
+      const hasContacts = settings.technicianContacts !== undefined;
+      const hasSupports = settings.cboSupports !== undefined;
+      if (
+        hasContacts &&
+        (typeof settings.technicianContacts !== "object" ||
+          settings.technicianContacts === null ||
+          Array.isArray(settings.technicianContacts) ||
+          Object.values(settings.technicianContacts).some((phone) =>
+            typeof phone !== "string" || (phone !== "" && !isValidPhone(phone))
+          ))
+      ) {
+        return json({ error: "Contatos dos tecnicos invalidos." }, 400);
+      }
+      if (
+        hasSupports &&
+        (!Array.isArray(settings.cboSupports) ||
+          settings.cboSupports.some((item: { id?: string; name?: string; contact?: string }) =>
+            !item?.id || !item?.name?.trim() || !isValidPhone(item.contact)
+          ))
+      ) {
+        return json({ error: "Suportes invalidos." }, 400);
+      }
       if (session.role === "admin" && !Array.isArray(settings.accessAccounts)) {
         return json({ error: "Contas de acesso invalidas." }, 400);
       }
@@ -745,6 +769,8 @@ Deno.serve(async (request) => {
           technicians: settings.technicians,
           vessels: settings.vessels,
           service_regions: settings.serviceRegions,
+          ...(hasContacts ? { technician_contacts: settings.technicianContacts } : {}),
+          ...(hasSupports ? { cbo_supports: settings.cboSupports } : {}),
           ...(session.role === "admin"
             ? { allow_selfie_deletion: settings.allowSelfieDeletion }
             : {}),

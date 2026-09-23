@@ -36,8 +36,16 @@ export interface ServiceRegion {
   posts: string[];
 }
 
+export interface SupportContact {
+  id: string;
+  name: string;
+  contact: string;
+}
+
 export interface SystemSettings {
   technicians: string[];
+  technicianContacts: Record<string, string>;
+  cboSupports: SupportContact[];
   vessels: string[];
   accessAccounts: AccessAccount[];
   allowSelfieDeletion: boolean;
