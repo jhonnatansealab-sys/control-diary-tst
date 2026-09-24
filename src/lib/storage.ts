@@ -118,6 +118,7 @@ export function loadSettings(): SystemSettings {
     technicians: saved.technicians?.length ? saved.technicians : defaultSettings.technicians,
     technicianContacts: saved.technicianContacts ?? {},
     cboSupports: saved.cboSupports ?? [],
+    vesselClients: saved.vesselClients ?? {},
     vessels: saved.vessels?.length ? saved.vessels : defaultSettings.vessels,
     accessAccounts: hasFinancial
       ? accounts

@@ -219,6 +219,7 @@ export const defaultSettings: SystemSettings = {
   technicians: initialTechnicians,
   technicianContacts: {},
   cboSupports: [],
+  vesselClients: {},
   vessels: initialVessels,
   accessAccounts: [
     {

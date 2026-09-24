@@ -1,6 +1,7 @@
-import { Camera, Filter, MapPin, Phone, Plus, Search, Ship, Trash2, UserCog, Users } from "lucide-react";
+import { Building2, Camera, Filter, MapPin, Phone, Plus, Search, Ship, Trash2, UserCog, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { deleteRemoteSelfie, fetchRemoteSelfies } from "../lib/api";
+import { CLIENTS } from "../lib/clients";
 import { normalizePhone, phonePattern } from "../lib/phone";
 import { loadSelfies, saveSelfies } from "../lib/storage";
 import { isDemoMode } from "../lib/supabase";
@@ -12,8 +13,8 @@ interface AdminProps {
   onSettingsChange: (settings: SystemSettings) => void | Promise<void>;
 }
 
-type AdminSection = "technicians" | "vessels" | "regions" | "supports" | "access";
-type ManagementFilter = "all" | "contains" | "exact" | "possibleDuplicates" | "supervisor" | "financeiro" | "admin" | "active" | "inactive";
+type AdminSection = "technicians" | "vessels" | "regions" | "supports" | "clients" | "access";
+type ManagementFilter = "all" | "contains" | "exact" | "possibleDuplicates" | "supervisor" | "financeiro" | "admin" | "active" | "inactive" | "CBO" | "DOF" | "none";
 
 function normalizeSearch(value: string) {
   return value
@@ -56,6 +57,7 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
   const [section, setSection] = useState<AdminSection>("technicians");
   const [newItem, setNewItem] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [savingClients, setSavingClients] = useState(false);
   const [managementSearch, setManagementSearch] = useState("");
   const [managementFilter, setManagementFilter] = useState<ManagementFilter>("all");
   const [managementMessage, setManagementMessage] = useState("");
@@ -156,6 +158,20 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
     onSettingsChange({ ...settings, cboSupports: settings.cboSupports.filter((item) => item.id !== id) });
   }
 
+  async function setVesselClients(vessels: string[], client: string) {
+    const next = { ...settings.vesselClients };
+    vessels.forEach((vessel) => {
+      if (client) next[vessel] = client;
+      else delete next[vessel];
+    });
+    setSavingClients(true);
+    try {
+      await onSettingsChange({ ...settings, vesselClients: next });
+    } finally {
+      setSavingClients(false);
+    }
+  }
+
   function removeCatalogItem(value: string) {
     if (section === "technicians") {
       const contacts = { ...settings.technicianContacts };
@@ -166,7 +182,9 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
         technicianContacts: contacts,
       });
     } else {
-      onSettingsChange({ ...settings, vessels: settings.vessels.filter((item) => item !== value) });
+      const clients = { ...settings.vesselClients };
+      delete clients[value];
+      onSettingsChange({ ...settings, vessels: settings.vessels.filter((item) => item !== value), vesselClients: clients });
     }
   }
 
@@ -248,6 +266,15 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
     }),
     [catalog, catalogDuplicateKeys, managementFilter, normalizedSearch],
   );
+  const filteredClientVessels = useMemo(
+    () => settings.vessels.filter((vessel) => {
+      const client = settings.vesselClients[vessel] ?? "none";
+      const matchesSearch = !normalizedSearch || normalizeSearch(vessel).includes(normalizedSearch);
+      const matchesFilter = managementFilter === "all" || managementFilter === client;
+      return matchesSearch && matchesFilter;
+    }),
+    [managementFilter, normalizedSearch, settings.vesselClients, settings.vessels],
+  );
   const filteredAccounts = useMemo(
     () => settings.accessAccounts.filter((item) => {
       const searchable = normalizeSearch(`${item.name} ${item.username} ${item.role} ${item.active ? "ativo" : "inativo"}`);
@@ -268,17 +295,21 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
       ? settings.serviceRegions.length
       : section === "supports"
         ? settings.cboSupports.length
-        : filteredCatalog.length;
+        : section === "clients"
+          ? filteredClientVessels.length
+          : filteredCatalog.length;
   const totalCount = section === "access"
     ? settings.accessAccounts.length
     : section === "regions"
       ? settings.serviceRegions.length
       : section === "supports"
         ? settings.cboSupports.length
-        : catalog.length;
+        : section === "clients"
+          ? settings.vessels.length
+          : catalog.length;
   const searchPlaceholder = section === "technicians"
     ? "Pesquisar técnico cadastrado"
-    : section === "vessels"
+    : section === "vessels" || section === "clients"
       ? "Pesquisar embarcação cadastrada"
       : "Pesquisar nome, usuário ou perfil";
 
@@ -302,6 +333,9 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
         <button className={`admin-card ${section === "supports" ? "selected" : ""}`} onClick={() => setSection("supports")}>
           <span className="admin-icon"><Phone size={24} /></span><div><strong>{settings.cboSupports.length}</strong><span>Suportes cadastrados</span></div><b>Gerenciar suportes CBO</b>
         </button>
+        <button className={`admin-card ${section === "clients" ? "selected" : ""}`} onClick={() => setSection("clients")}>
+          <span className="admin-icon"><Building2 size={24} /></span><div><strong>{settings.vessels.filter((vessel) => settings.vesselClients[vessel]).length}/{settings.vessels.length}</strong><span>Embarcações com cliente</span></div><b>Vincular embarcações a clientes</b>
+        </button>
         {isSystemAdmin && (
           <button className={`admin-card ${section === "access" ? "selected" : ""}`} onClick={() => setSection("access")}>
             <span className="admin-icon"><UserCog size={24} /></span><div><strong>{settings.accessAccounts.length}</strong><span>Acessos configurados</span></div><b>Gerenciar acessos</b>
@@ -311,7 +345,7 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
 
       <section className="panel management-panel">
         <div className="panel-header">
-          <div><h2>{section === "technicians" ? "Técnicos" : section === "vessels" ? "Embarcações" : section === "regions" ? "Regiões e postos de atendimento" : section === "supports" ? "Suportes da CBO" : "Contas de acesso"}</h2><p>As alterações são aplicadas imediatamente aos formulários e ao login.</p></div>
+          <div><h2>{section === "technicians" ? "Técnicos" : section === "vessels" ? "Embarcações" : section === "regions" ? "Regiões e postos de atendimento" : section === "supports" ? "Suportes da CBO" : section === "clients" ? "Clientes das embarcações" : "Contas de acesso"}</h2><p>As alterações são aplicadas imediatamente aos formulários e ao login.</p></div>
         </div>
         {section !== "regions" && section !== "supports" && (
           <div className="management-tools">
@@ -324,7 +358,13 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
               <Filter size={17} />
               <select value={managementFilter} onChange={(event) => setManagementFilter(event.target.value as ManagementFilter)}>
                 <option value="all">Todos</option>
-                {section !== "access" ? (
+                {section === "clients" ? (
+                  <>
+                    <option value="CBO">Cliente CBO</option>
+                    <option value="DOF">Cliente DOF</option>
+                    <option value="none">Sem cliente</option>
+                  </>
+                ) : section !== "access" ? (
                   <>
                     <option value="contains">Contém o termo</option>
                     <option value="exact">Coincidência exata</option>
@@ -382,6 +422,28 @@ export function Admin({ user, settings, onSettingsChange }: AdminProps) {
               ))}
               {!settings.serviceRegions.length && <div className="empty-state compact-empty"><Search size={24} /><strong>Nenhuma região cadastrada</strong><span>Adicione uma região para começar a cadastrar os postos de atendimento.</span></div>}
             </div>
+          </>
+        ) : section === "clients" ? (
+          <>
+            <div className="management-add client-bulk-actions">
+              <span>{filteredClientVessels.length} embarcações exibidas — vincular todas a:{savingClients ? " (salvando...)" : ""}</span>
+              {CLIENTS.map((client) => (
+                <button key={client} className="button button-secondary" type="button" disabled={savingClients || !filteredClientVessels.length} onClick={() => setVesselClients(filteredClientVessels, client)}>{client}</button>
+              ))}
+              <button className="button button-secondary" type="button" disabled={savingClients || !filteredClientVessels.length} onClick={() => setVesselClients(filteredClientVessels, "")}>Remover vínculo</button>
+            </div>
+            <div className="management-list">
+              {filteredClientVessels.map((vessel) => (
+                <div key={vessel}>
+                  <span>{vessel}</span>
+                  <select className="client-select" disabled={savingClients} value={settings.vesselClients[vessel] ?? ""} onChange={(event) => setVesselClients([vessel], event.target.value)}>
+                    <option value="">Sem cliente</option>
+                    {CLIENTS.map((client) => <option key={client} value={client}>{client}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            {!filteredClientVessels.length && <div className="empty-state compact-empty"><Search size={24} /><strong>Nenhuma embarcação encontrada</strong><span>Ajuste a busca ou o filtro.</span></div>}
           </>
         ) : section === "supports" ? (
           <>

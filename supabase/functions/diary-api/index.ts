@@ -71,7 +71,7 @@ async function getSettings(includeAdminSettings = false) {
     await Promise.all([
       supabase
         .from("app_settings")
-        .select("technicians,vessels,allow_selfie_deletion,service_regions,technician_contacts,cbo_supports")
+        .select("technicians,vessels,allow_selfie_deletion,service_regions,technician_contacts,cbo_supports,vessel_clients")
         .eq("id", true)
         .single(),
       includeAdminSettings
@@ -89,6 +89,7 @@ async function getSettings(includeAdminSettings = false) {
     serviceRegions: settings.service_regions ?? [],
     technicianContacts: settings.technician_contacts ?? {},
     cboSupports: settings.cbo_supports ?? [],
+    vesselClients: settings.vessel_clients ?? {},
     allowSelfieDeletion: includeAdminSettings ? settings.allow_selfie_deletion : false,
     accessAccounts: (accounts ?? []).map((account) => ({ ...account, password: "" })),
   };
@@ -259,6 +260,34 @@ function validateReportFile(fileName: unknown, mimeType: unknown, dataUrl: unkno
   return { bytes };
 }
 
+async function saveDiaryReport(
+  recordId: string,
+  technician: string,
+  report: { fileName: string; mimeType: string; dataUrl: string },
+  bytes: number,
+  uploadedBy: string,
+) {
+  const meta = {
+    fileName: report.fileName.trim(),
+    mimeType: report.mimeType,
+    size: bytes,
+    uploadedAt: new Date().toISOString(),
+    uploadedBy,
+  };
+  const { error } = await supabase.from("app_diary_reports").upsert({
+    record_id: recordId,
+    technician,
+    file_name: meta.fileName,
+    mime_type: meta.mimeType,
+    size: meta.size,
+    data: report.dataUrl,
+    uploaded_at: meta.uploadedAt,
+    uploaded_by: meta.uploadedBy,
+  });
+  if (error) throw error;
+  return meta;
+}
+
 interface ReceiptInput {
   id?: string;
   imageData?: string;
@@ -314,6 +343,21 @@ function isValidScheduleRecord(record: ScheduleInput | null | undefined) {
     isValidTstList(record.dayTsts ?? []) &&
     isValidTstList(record.nightTsts ?? []) &&
     isValidContactList(record.cboSupports ?? []);
+}
+
+async function attachReportOrRollback(
+  record: RecordInput,
+  reportInput: { fileName: string; mimeType: string; dataUrl: string } | undefined,
+  bytes: number,
+  uploadedBy: string,
+) {
+  if (!reportInput) return undefined;
+  try {
+    return await saveDiaryReport(record.id!, record.technician!, reportInput, bytes, uploadedBy);
+  } catch (error) {
+    await supabase.from("app_diary_records").delete().eq("id", record.id!);
+    throw error;
+  }
 }
 
 Deno.serve(async (request) => {
@@ -454,6 +498,28 @@ Deno.serve(async (request) => {
       if (session.role === "colaborador" && record.technician !== session.name) {
         return json({ error: "Colaborador so pode registrar a propria diaria." }, 403);
       }
+      const reportInput = body.report;
+      let reportBytes = 0;
+      if (reportInput) {
+        const validation = validateReportFile(reportInput.fileName, reportInput.mimeType, reportInput.dataUrl);
+        if (typeof validation === "string") return json({ error: validation }, 400);
+        reportBytes = validation.bytes;
+      }
+      if (session.role === "colaborador" && !reportInput) {
+        const { data: clientSettings, error: clientError } = await supabase
+          .from("app_settings")
+          .select("vessel_clients")
+          .eq("id", true)
+          .single();
+        if (clientError) throw clientError;
+        const clients = (clientSettings.vessel_clients ?? {}) as Record<string, string>;
+        const needsReport = record.turns.some((turn: TurnInput) =>
+          (turn.vessels ?? []).some((vessel) => clients[vessel as string] === "CBO")
+        );
+        if (needsReport) {
+          return json({ error: "O relatorio de atividades e obrigatorio para embarcacoes do cliente CBO." }, 400);
+        }
+      }
       if (
         session.role === "colaborador" &&
         record.turns.some((turn: TurnInput) => turn.vessels?.length !== 1)
@@ -479,7 +545,7 @@ Deno.serve(async (request) => {
             error: "Ja existe uma diaria registrada para este colaborador nesta data.",
           }, 409);
         }
-        return json({ record }, 201);
+        return json({ record, report: await attachReportOrRollback(record, reportInput, reportBytes, session.name) }, 201);
       }
       const { error } = await supabase.from("app_diary_records").insert({
         id: record.id,
@@ -488,7 +554,7 @@ Deno.serve(async (request) => {
         payload: record,
       });
       if (error) throw error;
-      return json({ record }, 201);
+      return json({ record, report: await attachReportOrRollback(record, reportInput, reportBytes, session.name) }, 201);
     }
 
     if (request.method === "POST" && action === "request") {
@@ -547,24 +613,7 @@ Deno.serve(async (request) => {
       if (session.role === "colaborador" && record.technician !== session.name) {
         return json({ error: "Voce so pode anexar relatorio aos seus proprios registros." }, 403);
       }
-      const meta = {
-        fileName: body.fileName.trim(),
-        mimeType: body.mimeType,
-        size: validation.bytes,
-        uploadedAt: new Date().toISOString(),
-        uploadedBy: session.name,
-      };
-      const { error } = await supabase.from("app_diary_reports").upsert({
-        record_id: record.id,
-        technician: record.technician,
-        file_name: meta.fileName,
-        mime_type: meta.mimeType,
-        size: meta.size,
-        data: body.dataUrl,
-        uploaded_at: meta.uploadedAt,
-        uploaded_by: meta.uploadedBy,
-      });
-      if (error) throw error;
+      const meta = await saveDiaryReport(record.id, record.technician, body, validation.bytes, session.name);
       return json({ report: meta }, 201);
     }
 
@@ -844,6 +893,16 @@ Deno.serve(async (request) => {
       }
       const hasContacts = settings.technicianContacts !== undefined;
       const hasSupports = settings.cboSupports !== undefined;
+      const hasClients = settings.vesselClients !== undefined;
+      if (
+        hasClients &&
+        (typeof settings.vesselClients !== "object" ||
+          settings.vesselClients === null ||
+          Array.isArray(settings.vesselClients) ||
+          Object.values(settings.vesselClients).some((client) => !["CBO", "DOF"].includes(client as string)))
+      ) {
+        return json({ error: "Clientes das embarcacoes invalidos." }, 400);
+      }
       if (
         hasContacts &&
         (typeof settings.technicianContacts !== "object" ||
@@ -875,6 +934,7 @@ Deno.serve(async (request) => {
           service_regions: settings.serviceRegions,
           ...(hasContacts ? { technician_contacts: settings.technicianContacts } : {}),
           ...(hasSupports ? { cbo_supports: settings.cboSupports } : {}),
+          ...(hasClients ? { vessel_clients: settings.vesselClients } : {}),
           ...(session.role === "admin"
             ? { allow_selfie_deletion: settings.allowSelfieDeletion }
             : {}),

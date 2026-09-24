@@ -46,6 +46,7 @@ export interface SystemSettings {
   technicians: string[];
   technicianContacts: Record<string, string>;
   cboSupports: SupportContact[];
+  vesselClients: Record<string, string>;
   vessels: string[];
   accessAccounts: AccessAccount[];
   allowSelfieDeletion: boolean;

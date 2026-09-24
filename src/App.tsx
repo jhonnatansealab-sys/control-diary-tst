@@ -194,23 +194,31 @@ export default function App() {
     ) {
       return "Voce ja possui uma diaria registrada nesta data.";
     }
+    let saved: DiaryRecord = record;
     if (!isDemoMode && user) {
       try {
-        await createRemoteRecord(user, record);
+        const response = await createRemoteRecord(user, record, report);
+        if (response.report) saved = { ...record, report: response.report };
       } catch (error) {
         const message = (error as Error).message;
         setRemoteError(message);
         return message;
       }
+    } else if (report && user) {
+      saveReportData(record.id, report.dataUrl);
+      saved = {
+        ...record,
+        report: {
+          fileName: report.fileName,
+          mimeType: report.mimeType,
+          size: report.size,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: user.name,
+        },
+      };
     }
-    setRecords((current) => [record, ...current]);
+    setRecords((current) => [saved, ...current]);
     setRemoteError("");
-    if (report) {
-      const reportError = await attachReport(record.id, report);
-      if (reportError) {
-        setRemoteError(`Diária salva, mas o relatório não foi anexado: ${reportError} Anexe-o pelo registro.`);
-      }
-    }
     return null;
   }
 

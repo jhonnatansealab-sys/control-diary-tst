@@ -3,6 +3,7 @@ import { useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { ReportViewerModal } from "../components/ReportViewerModal";
 import { VesselSelect } from "../components/VesselSelect";
+import { cboVesselsIn } from "../lib/clients";
 import { downloadDataUrl, formatFileSize, isViewableReport, readReportFile, REPORT_ACCEPT, type ReportPayload } from "../lib/reportFile";
 import type { Activity, AuthUser, DiaryRecord, Shift, SystemSettings, TurnEntry } from "../types";
 
@@ -70,6 +71,12 @@ export function NewDiary({
     }
   }
 
+  const cboVessels = cboVesselsIn(
+    [...firstTurn.vessels, ...(hasDouble ? secondTurn.vessels : [])],
+    settings.vesselClients,
+  );
+  const reportRequired = user.role === "colaborador" && cboVessels.length > 0;
+
   async function chooseReport(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -94,6 +101,11 @@ export function NewDiary({
     }
     if (!firstTurn.vessels.length || (hasDouble && !secondTurn.vessels.length)) {
       setError("Informe uma embarcação para cada turno.");
+      return;
+    }
+
+    if (reportRequired && !report) {
+      setError("O relatório de atividades é obrigatório para embarcações do cliente CBO.");
       return;
     }
 
@@ -245,7 +257,7 @@ export function NewDiary({
         <section className="form-card">
           <div className="form-card-header">
             <span>{hasDouble ? 5 : 4}</span>
-            <div><h2>Relatorio de atividades</h2><p>Anexe o relatorio do dia, se houver (opcional)</p></div>
+            <div><h2>Relatorio de atividades {reportRequired ? <b>*</b> : <em>Opcional</em>}</h2><p>{reportRequired ? `Obrigatorio: embarcacao do cliente CBO (${cboVessels.join(", ")})` : "Anexe o relatorio do dia, se houver"}</p></div>
           </div>
           {report ? (
             <div className="report-attachment">

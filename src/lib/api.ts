@@ -73,10 +73,16 @@ export async function fetchRemoteState(user: AuthUser) {
   return request<RemoteState>("state", {}, user.sessionToken);
 }
 
-export async function createRemoteRecord(user: AuthUser, record: DiaryRecord) {
-  return request<{ record: DiaryRecord }>(
+export async function createRemoteRecord(user: AuthUser, record: DiaryRecord, report?: ReportPayload) {
+  return request<{ record: DiaryRecord; report?: DiaryReport }>(
     "record",
-    { method: "POST", body: JSON.stringify({ record }) },
+    {
+      method: "POST",
+      body: JSON.stringify({
+        record,
+        report: report && { fileName: report.fileName, mimeType: report.mimeType, dataUrl: report.dataUrl },
+      }),
+    },
     user.sessionToken,
   );
 }
