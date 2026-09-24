@@ -6,6 +6,8 @@ import {
   createRemoteReimbursement,
   createRemoteRequest,
   createRemoteScheduleRecord,
+  fetchRemoteReport,
+  uploadRemoteReport,
   deleteRemoteRecord,
   deleteRemoteScheduleRecord,
   fetchBootstrap,
@@ -19,17 +21,20 @@ import {
 import {
   loadRecords,
   loadReimbursements,
+  loadReportData,
   loadRequests,
   loadScheduleRecords,
   loadSessionFromBrowser,
   loadSettings,
   saveRecords,
   saveReimbursements,
+  saveReportData,
   saveRequests,
   saveScheduleRecords,
   saveSession,
   saveSettings,
 } from "./lib/storage";
+import type { ReportPayload } from "./lib/reportFile";
 import { isDemoMode } from "./lib/supabase";
 import { Admin } from "./pages/Admin";
 import { Analytics } from "./pages/Analytics";
@@ -144,7 +149,41 @@ export default function App() {
     saveSession(null);
   }
 
-  async function addRecord(record: DiaryRecord): Promise<string | null> {
+  async function attachReport(recordId: string, report: ReportPayload): Promise<string | null> {
+    if (!user || user.role === "financeiro") return "Sem permissão para anexar relatório.";
+    let meta = {
+      fileName: report.fileName,
+      mimeType: report.mimeType,
+      size: report.size,
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: user.name,
+    };
+    if (isDemoMode) {
+      saveReportData(recordId, report.dataUrl);
+    } else {
+      try {
+        meta = (await uploadRemoteReport(user, recordId, report)).report;
+      } catch (error) {
+        return (error as Error).message;
+      }
+    }
+    setRecords((current) => current.map((item) => (item.id === recordId ? { ...item, report: meta } : item)));
+    return null;
+  }
+
+  async function loadReport(recordId: string): Promise<ReportPayload> {
+    const record = records.find((item) => item.id === recordId);
+    if (isDemoMode) {
+      const dataUrl = loadReportData(recordId);
+      if (!record?.report || !dataUrl) throw new Error("Relatório não encontrado.");
+      return { fileName: record.report.fileName, mimeType: record.report.mimeType, size: record.report.size, dataUrl };
+    }
+    if (!user) throw new Error("Sessão inválida.");
+    const { report } = await fetchRemoteReport(user, recordId);
+    return { fileName: report.fileName, mimeType: report.mimeType, size: report.size, dataUrl: report.dataUrl };
+  }
+
+  async function addRecord(record: DiaryRecord, report?: ReportPayload): Promise<string | null> {
     if (
       user?.role === "colaborador" &&
       records.some(
@@ -166,6 +205,12 @@ export default function App() {
     }
     setRecords((current) => [record, ...current]);
     setRemoteError("");
+    if (report) {
+      const reportError = await attachReport(record.id, report);
+      if (reportError) {
+        setRemoteError(`Diária salva, mas o relatório não foi anexado: ${reportError} Anexe-o pelo registro.`);
+      }
+    }
     return null;
   }
 
@@ -195,7 +240,7 @@ export default function App() {
     if (!isDemoMode) {
       try {
         const response = await updateRemoteRecord(user, nextRecord);
-        nextRecord = response.record;
+        nextRecord = { ...response.record, report: record.report };
         rejectedRequestIds = response.rejectedRequestIds;
         setRemoteError("");
       } catch (error) {
@@ -252,7 +297,7 @@ export default function App() {
         current.map((record) =>
           record.id === request.recordId
             ? status === "Aprovada"
-              ? { ...request.proposedRecord, status: "Corrigido" }
+              ? { ...request.proposedRecord, status: "Corrigido", report: record.report }
               : { ...record, status: "Registrado" }
             : record,
         ),
@@ -446,6 +491,8 @@ export default function App() {
               onRequest={addRequest}
               onAdminUpdate={updateRecord}
               onAdminDelete={deleteRecord}
+              onAttachReport={attachReport}
+              onLoadReport={loadReport}
             />
           }
         />

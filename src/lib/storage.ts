@@ -5,6 +5,7 @@ const RECORDS_KEY = "tst-diary-records";
 const REQUESTS_KEY = "tst-diary-requests";
 const SCHEDULE_KEY = "tst-schedule-records";
 const REIMBURSEMENTS_KEY = "tst-reimbursement-requests";
+const REPORTS_KEY = "tst-diary-reports";
 const SESSION_KEY = "tst-diary-session";
 const SELFIES_KEY = "tst-diary-selfies";
 const SETTINGS_KEY = "tst-diary-settings";
@@ -65,6 +66,14 @@ export function loadReimbursements(): ReimbursementRequest[] {
 
 export function saveReimbursements(requests: ReimbursementRequest[]) {
   write(REIMBURSEMENTS_KEY, requests);
+}
+
+export function saveReportData(recordId: string, dataUrl: string) {
+  write(REPORTS_KEY, { ...read<Record<string, string>>(REPORTS_KEY, {}), [recordId]: dataUrl });
+}
+
+export function loadReportData(recordId: string): string | undefined {
+  return read<Record<string, string>>(REPORTS_KEY, {})[recordId];
 }
 
 export function saveSession(user: AuthUser | null) {

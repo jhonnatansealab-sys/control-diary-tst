@@ -1,14 +1,16 @@
-import { AlertCircle, ArrowLeft, CheckCircle2, Moon, Save, Sun } from "lucide-react";
-import { useState } from "react";
+import { AlertCircle, ArrowLeft, CheckCircle2, Download, Eye, FileText, Moon, Paperclip, Save, Sun, Trash2 } from "lucide-react";
+import { useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { ReportViewerModal } from "../components/ReportViewerModal";
 import { VesselSelect } from "../components/VesselSelect";
+import { downloadDataUrl, formatFileSize, isViewableReport, readReportFile, REPORT_ACCEPT, type ReportPayload } from "../lib/reportFile";
 import type { Activity, AuthUser, DiaryRecord, Shift, SystemSettings, TurnEntry } from "../types";
 
 interface NewDiaryProps {
   user: AuthUser;
   records: DiaryRecord[];
   settings: SystemSettings;
-  onSave: (record: DiaryRecord) => Promise<string | null>;
+  onSave: (record: DiaryRecord, report?: ReportPayload) => Promise<string | null>;
   showPaymentWarning: boolean;
   onDismissPaymentWarning: () => void;
 }
@@ -46,6 +48,9 @@ export function NewDiary({
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [report, setReport] = useState<ReportPayload | null>(null);
+  const [viewingReport, setViewingReport] = useState(false);
+  const [reportError, setReportError] = useState("");
   const existingRecord = user.role === "colaborador"
     ? records.find(
         (record) =>
@@ -62,6 +67,18 @@ export function NewDiary({
         ...current,
         shift: patch.shift === "Diurno" ? "Noturno" : "Diurno",
       }));
+    }
+  }
+
+  async function chooseReport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      setReport(await readReportFile(file));
+      setReportError("");
+    } catch (fileError) {
+      setReportError((fileError as Error).message);
     }
   }
 
@@ -92,7 +109,7 @@ export function NewDiary({
     };
     setSaving(true);
     setError("");
-    const saveError = await onSave(record);
+    const saveError = await onSave(record, report ?? undefined);
     if (saveError) {
       setError(saveError);
       setSaving(false);
@@ -129,6 +146,7 @@ export function NewDiary({
         <p>Preencha os dados da jornada. Os campos marcados sao obrigatorios.</p>
       </section>
 
+      {viewingReport && report && <ReportViewerModal report={report} onClose={() => setViewingReport(false)} />}
       <form className="diary-form" onSubmit={submit}>
         <section className="form-card">
           <div className="form-card-header">
@@ -222,6 +240,34 @@ export function NewDiary({
             />
             <small className="character-count">{notes.length}/500</small>
           </label>
+        </section>
+
+        <section className="form-card">
+          <div className="form-card-header">
+            <span>{hasDouble ? 5 : 4}</span>
+            <div><h2>Relatorio de atividades</h2><p>Anexe o relatorio do dia, se houver (opcional)</p></div>
+          </div>
+          {report ? (
+            <div className="report-attachment">
+              <FileText size={20} />
+              <div className="report-attachment-info">
+                <strong>{report.fileName}</strong>
+                <small>{formatFileSize(report.size)}</small>
+              </div>
+              <div className="report-attachment-actions">
+                <button type="button" disabled={!isViewableReport(report.mimeType)} onClick={() => setViewingReport(true)} aria-label="Visualizar relatorio" title={isViewableReport(report.mimeType) ? "Visualizar" : "Pre-visualizacao indisponivel para Word"}><Eye size={15} /></button>
+                <button type="button" onClick={() => downloadDataUrl(report.fileName, report.dataUrl)} aria-label="Baixar relatorio"><Download size={15} /></button>
+                <button type="button" className="report-remove" onClick={() => setReport(null)} aria-label="Remover relatorio"><Trash2 size={15} /></button>
+              </div>
+            </div>
+          ) : (
+            <label className="button button-secondary reimbursement-upload">
+              <Paperclip size={16} /> Anexar relatorio
+              <input type="file" accept={REPORT_ACCEPT} onChange={chooseReport} hidden />
+            </label>
+          )}
+          <p className="report-upload-hint">Formatos: JPG, PNG, PDF, DOC ou DOCX. Tamanho maximo: 2 MB.</p>
+          {reportError && <div className="error-banner"><AlertCircle size={18} /> {reportError}</div>}
         </section>
 
         {existingRecord && (

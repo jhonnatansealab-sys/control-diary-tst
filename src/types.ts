@@ -58,6 +58,14 @@ export interface TurnEntry {
   vessels: string[];
 }
 
+export interface DiaryReport {
+  fileName: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
 export interface DiaryRecord {
   id: string;
   date: string;
@@ -67,6 +75,7 @@ export interface DiaryRecord {
   status: RecordStatus;
   createdAt: string;
   selfieSessionId?: string;
+  report?: DiaryReport;
 }
 
 export interface EditRequest {

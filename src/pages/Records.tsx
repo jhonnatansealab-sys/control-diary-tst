@@ -1,8 +1,10 @@
 import {
   AlertTriangle,
   Download,
+  Eye,
   FilePenLine,
   Filter,
+  Paperclip,
   Pencil,
   Save,
   Search,
@@ -10,11 +12,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useLocation } from "react-router-dom";
+import { ReportViewerModal } from "../components/ReportViewerModal";
 import { StatusBadge } from "../components/StatusBadge";
 import { VesselSelect } from "../components/VesselSelect";
 import { cloneJson } from "../lib/compatibility";
+import { downloadDataUrl, isViewableReport, readReportFile, REPORT_ACCEPT, type ReportPayload } from "../lib/reportFile";
 import type {
   Activity,
   AuthUser,
@@ -32,6 +36,8 @@ interface RecordsProps {
   onRequest: (request: EditRequest) => void;
   onAdminUpdate: (record: DiaryRecord) => Promise<boolean>;
   onAdminDelete: (id: string) => Promise<boolean>;
+  onAttachReport: (recordId: string, report: ReportPayload) => Promise<string | null>;
+  onLoadReport: (recordId: string) => Promise<ReportPayload>;
 }
 
 function localDate() {
@@ -48,6 +54,8 @@ export function Records({
   onRequest,
   onAdminUpdate,
   onAdminDelete,
+  onAttachReport,
+  onLoadReport,
 }: RecordsProps) {
   const location = useLocation();
   const [query, setQuery] = useState("");
@@ -58,6 +66,48 @@ export function Records({
   const [adminEditing, setAdminEditing] = useState<DiaryRecord | null>(null);
   const [adminDeleting, setAdminDeleting] = useState<DiaryRecord | null>(null);
   const [exportError, setExportError] = useState("");
+  const reportInputRef = useRef<HTMLInputElement>(null);
+  const [attachTarget, setAttachTarget] = useState("");
+  const [reportBusy, setReportBusy] = useState("");
+  const [reportMessage, setReportMessage] = useState("");
+  const [viewerReport, setViewerReport] = useState<ReportPayload | null>(null);
+  const canAttachReport = user.role !== "financeiro";
+
+  function startAttach(recordId: string) {
+    setAttachTarget(recordId);
+    setReportMessage("");
+    reportInputRef.current?.click();
+  }
+
+  async function chooseReport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !attachTarget) return;
+    setReportBusy(attachTarget);
+    try {
+      const payload = await readReportFile(file);
+      const attachError = await onAttachReport(attachTarget, payload);
+      if (attachError) setReportMessage(attachError);
+    } catch (fileError) {
+      setReportMessage((fileError as Error).message);
+    } finally {
+      setReportBusy("");
+    }
+  }
+
+  async function openReport(recordId: string, download: boolean) {
+    setReportBusy(recordId);
+    setReportMessage("");
+    try {
+      const payload = await onLoadReport(recordId);
+      if (download) downloadDataUrl(payload.fileName, payload.dataUrl);
+      else setViewerReport(payload);
+    } catch (loadError) {
+      setReportMessage((loadError as Error).message);
+    } finally {
+      setReportBusy("");
+    }
+  }
 
   const filtered = useMemo(() => {
     return records.filter((record) => {
@@ -146,6 +196,7 @@ export function Records({
       </section>
       {location.state?.saved && <div className="success-banner">Diária registrada com sucesso.</div>}
       {exportError && <div className="error-banner">{exportError}</div>}
+      {reportMessage && <div className="error-banner">{reportMessage}</div>}
       <section className="panel">
         <div className="filter-bar records-filters">
           <label className="search-field">
@@ -177,7 +228,7 @@ export function Records({
         </div>
         <div className="table-wrap">
           <table className="records-table">
-            <thead><tr><th>Data</th><th>Técnico</th><th>Atividade por turno</th><th>Embarcação por turno</th><th>Status</th><th /></tr></thead>
+            <thead><tr><th>Data</th><th>Técnico</th><th>Atividade por turno</th><th>Embarcação por turno</th><th>Status</th><th>Relatório</th><th /></tr></thead>
             <tbody>
               {filtered.map((record) => (
                 <tr key={record.id}>
@@ -192,6 +243,25 @@ export function Records({
                     </div>
                   </td>
                   <td><StatusBadge status={record.status} /></td>
+                  <td>
+                    <div className="report-cell">
+                      {record.report && (
+                        <>
+                          <span className="report-chip" title={record.report.fileName}>{record.report.fileName}</span>
+                          <div className="report-attachment-actions">
+                            <button type="button" disabled={reportBusy === record.id || !isViewableReport(record.report.mimeType)} onClick={() => openReport(record.id, false)} aria-label="Visualizar relatorio" title={isViewableReport(record.report.mimeType) ? "Visualizar" : "Pre-visualizacao indisponivel para Word"}><Eye size={15} /></button>
+                            <button type="button" disabled={reportBusy === record.id} onClick={() => openReport(record.id, true)} aria-label="Baixar relatorio"><Download size={15} /></button>
+                          </div>
+                        </>
+                      )}
+                      {canAttachReport && (
+                        <button type="button" className="row-action" disabled={reportBusy === record.id} onClick={() => startAttach(record.id)}>
+                          <Paperclip size={14} /> {reportBusy === record.id ? "Enviando..." : record.report ? "Trocar" : "Anexar"}
+                        </button>
+                      )}
+                      {!record.report && !canAttachReport && <span className="report-chip">—</span>}
+                    </div>
+                  </td>
                   <td>
                     {user.role === "colaborador" && (
                       <button className="row-action edit-request-button" onClick={() => setSelected(record)}>
@@ -218,6 +288,8 @@ export function Records({
           </table>
         </div>
       </section>
+      <input ref={reportInputRef} type="file" accept={REPORT_ACCEPT} onChange={chooseReport} hidden />
+      {viewerReport && <ReportViewerModal report={viewerReport} onClose={() => setViewerReport(null)} />}
       {selected && (
         <EditRecordModal
           record={selected}

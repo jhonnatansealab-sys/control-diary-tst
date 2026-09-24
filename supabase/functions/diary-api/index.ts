@@ -235,6 +235,30 @@ function isValidTstList(contacts: ScheduleContactInput[] | undefined) {
     contacts.every((contact) => !!contact?.name?.trim() && (!contact.contact || isValidPhone(contact.contact)));
 }
 
+const REPORT_MAX_BYTES = 2 * 1024 * 1024;
+const REPORT_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+
+function validateReportFile(fileName: unknown, mimeType: unknown, dataUrl: unknown) {
+  if (typeof fileName !== "string" || !fileName.trim() || fileName.length > 200) return "Nome do arquivo invalido.";
+  if (typeof mimeType !== "string" || !REPORT_MIME_TYPES.includes(mimeType)) {
+    return "Formato nao permitido. Use JPG, PNG, PDF, DOC ou DOCX.";
+  }
+  const prefix = `data:${mimeType};base64,`;
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith(prefix)) return "Arquivo invalido.";
+  const base64 = dataUrl.slice(prefix.length);
+  if (!base64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return "Arquivo invalido.";
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  const bytes = Math.floor((base64.length * 3) / 4) - padding;
+  if (bytes > REPORT_MAX_BYTES) return "O arquivo excede o limite de 2 MB.";
+  return { bytes };
+}
+
 interface ReceiptInput {
   id?: string;
   imageData?: string;
@@ -372,6 +396,9 @@ Deno.serve(async (request) => {
         .from("app_schedule_records")
         .select("payload")
         .order("scheduled_at", { ascending: true });
+      let reportsQuery = supabase
+        .from("app_diary_reports")
+        .select("record_id,file_name,mime_type,size,uploaded_at,uploaded_by");
       let reimbursementsQuery = supabase
         .from("app_reimbursement_requests")
         .select("payload")
@@ -380,19 +407,34 @@ Deno.serve(async (request) => {
         recordsQuery = recordsQuery.eq("technician", session.name);
         requestsQuery = requestsQuery.eq("technician", session.name);
         reimbursementsQuery = reimbursementsQuery.eq("technician", session.name);
+        reportsQuery = reportsQuery.eq("technician", session.name);
       }
       const [
         { data: records, error: recordsError },
         { data: requests, error: requestsError },
         { data: scheduleRecords, error: scheduleError },
         { data: reimbursements, error: reimbursementsError },
-      ] = await Promise.all([recordsQuery, requestsQuery, scheduleQuery, reimbursementsQuery]);
+        { data: reports, error: reportsError },
+      ] = await Promise.all([recordsQuery, requestsQuery, scheduleQuery, reimbursementsQuery, reportsQuery]);
       if (recordsError) throw recordsError;
       if (requestsError) throw requestsError;
       if (scheduleError) throw scheduleError;
       if (reimbursementsError) throw reimbursementsError;
+      if (reportsError) throw reportsError;
+      const reportByRecord = new Map((reports ?? []).map((item) => [item.record_id, {
+        fileName: item.file_name,
+        mimeType: item.mime_type,
+        size: item.size,
+        uploadedAt: item.uploaded_at,
+        uploadedBy: item.uploaded_by,
+      }]));
       return json({
-        records: (records ?? []).map((item) => item.payload),
+        records: (records ?? []).map((item) => {
+          const record = { ...item.payload };
+          delete record.report;
+          const report = reportByRecord.get(record.id);
+          return report ? { ...record, report } : record;
+        }),
         requests: (requests ?? []).map((item) => item.payload),
         scheduleRecords: session.role === "colaborador"
           ? []
@@ -488,6 +530,68 @@ Deno.serve(async (request) => {
       if (requestError) throw requestError;
       if (recordError) throw recordError;
       return json({ request: editRequest });
+    }
+
+    if (request.method === "POST" && action === "record-report") {
+      const session = await requireSession(request, ["colaborador", "supervisor", "admin"]);
+      const body = await readBody(request);
+      const validation = validateReportFile(body.fileName, body.mimeType, body.dataUrl);
+      if (typeof validation === "string") return json({ error: validation }, 400);
+      const { data: record, error: recordError } = await supabase
+        .from("app_diary_records")
+        .select("id,technician")
+        .eq("id", body.recordId ?? "")
+        .maybeSingle();
+      if (recordError) throw recordError;
+      if (!record) return json({ error: "Registro nao encontrado." }, 404);
+      if (session.role === "colaborador" && record.technician !== session.name) {
+        return json({ error: "Voce so pode anexar relatorio aos seus proprios registros." }, 403);
+      }
+      const meta = {
+        fileName: body.fileName.trim(),
+        mimeType: body.mimeType,
+        size: validation.bytes,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: session.name,
+      };
+      const { error } = await supabase.from("app_diary_reports").upsert({
+        record_id: record.id,
+        technician: record.technician,
+        file_name: meta.fileName,
+        mime_type: meta.mimeType,
+        size: meta.size,
+        data: body.dataUrl,
+        uploaded_at: meta.uploadedAt,
+        uploaded_by: meta.uploadedBy,
+      });
+      if (error) throw error;
+      return json({ report: meta }, 201);
+    }
+
+    if (request.method === "GET" && action === "record-report") {
+      const session = await requireSession(request);
+      const recordId = url.searchParams.get("id");
+      if (!recordId) return json({ error: "Registro nao informado." }, 400);
+      const { data, error } = await supabase
+        .from("app_diary_reports")
+        .select("technician,file_name,mime_type,size,uploaded_at,uploaded_by,data")
+        .eq("record_id", recordId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return json({ error: "Relatorio nao encontrado." }, 404);
+      if (session.role === "colaborador" && data.technician !== session.name) {
+        return json({ error: "Acesso nao autorizado." }, 403);
+      }
+      return json({
+        report: {
+          fileName: data.file_name,
+          mimeType: data.mime_type,
+          size: data.size,
+          uploadedAt: data.uploaded_at,
+          uploadedBy: data.uploaded_by,
+          dataUrl: data.data,
+        },
+      });
     }
 
     if (request.method === "POST" && action === "reimbursement") {

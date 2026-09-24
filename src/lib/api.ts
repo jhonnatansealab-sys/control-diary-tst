@@ -1,6 +1,8 @@
+import type { ReportPayload } from "./reportFile";
 import type {
   AuthUser,
   DiaryRecord,
+  DiaryReport,
   EditRequest,
   ReimbursementRequest,
   Role,
@@ -108,6 +110,33 @@ export async function deleteRemoteRecord(user: AuthUser, id: string) {
     throw new Error(body.error || "Nao foi possivel excluir o registro.");
   }
   return body as { ok: boolean; id: string };
+}
+
+export async function uploadRemoteReport(user: AuthUser, recordId: string, report: ReportPayload) {
+  return request<{ report: DiaryReport }>(
+    "record-report",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        recordId,
+        fileName: report.fileName,
+        mimeType: report.mimeType,
+        dataUrl: report.dataUrl,
+      }),
+    },
+    user.sessionToken,
+  );
+}
+
+export async function fetchRemoteReport(user: AuthUser, recordId: string) {
+  if (!supabaseUrl || !supabasePublishableKey) throw new Error("Supabase nao configurado.");
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/diary-api?action=record-report&id=${encodeURIComponent(recordId)}`,
+    { headers: { apikey: supabasePublishableKey, "x-app-session": user.sessionToken ?? "" } },
+  );
+  const body = await response.json().catch(() => ({ error: "Falha ao carregar o relatório." }));
+  if (!response.ok) throw new Error(body.error || "Falha ao carregar o relatório.");
+  return body as { report: DiaryReport & { dataUrl: string } };
 }
 
 export async function createRemoteRequest(user: AuthUser, editRequest: EditRequest) {
