@@ -278,7 +278,7 @@ export function NewDiary({
               <input type="file" accept={REPORT_ACCEPT} onChange={chooseReport} hidden />
             </label>
           )}
-          <p className="report-upload-hint">Formatos: JPG, PNG, PDF, DOC ou DOCX. Tamanho maximo: 2 MB.</p>
+          <p className="report-upload-hint">Formatos: JPG, PNG, PDF, DOC ou DOCX. Tamanho maximo: 8 MB.</p>
           {reportError && <div className="error-banner"><AlertCircle size={18} /> {reportError}</div>}
         </section>
 

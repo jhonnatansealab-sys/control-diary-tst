@@ -236,7 +236,7 @@ function isValidTstList(contacts: ScheduleContactInput[] | undefined) {
     contacts.every((contact) => !!contact?.name?.trim() && (!contact.contact || isValidPhone(contact.contact)));
 }
 
-const REPORT_MAX_BYTES = 2 * 1024 * 1024;
+const REPORT_MAX_BYTES = 8 * 1024 * 1024;
 const REPORT_MIME_TYPES = [
   "image/jpeg",
   "image/png",
@@ -256,7 +256,7 @@ function validateReportFile(fileName: unknown, mimeType: unknown, dataUrl: unkno
   if (!base64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return "Arquivo invalido.";
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
   const bytes = Math.floor((base64.length * 3) / 4) - padding;
-  if (bytes > REPORT_MAX_BYTES) return "O arquivo excede o limite de 2 MB.";
+  if (bytes > REPORT_MAX_BYTES) return "O arquivo excede o limite de 8 MB.";
   return { bytes };
 }
 

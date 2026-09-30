@@ -1,4 +1,4 @@
-export const REPORT_MAX_BYTES = 2 * 1024 * 1024;
+export const REPORT_MAX_BYTES = 8 * 1024 * 1024;
 export const REPORT_ACCEPT = ".jpg,.jpeg,.png,.pdf,.doc,.docx";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
@@ -31,7 +31,7 @@ export async function readReportFile(file: File): Promise<ReportPayload> {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   const mimeType = MIME_BY_EXTENSION[extension];
   if (!mimeType) throw new Error("Formato não permitido. Use JPG, PNG, PDF, DOC ou DOCX.");
-  if (file.size > REPORT_MAX_BYTES) throw new Error("O arquivo excede o limite de 2 MB.");
+  if (file.size > REPORT_MAX_BYTES) throw new Error("O arquivo excede o limite de 8 MB.");
   const source = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
