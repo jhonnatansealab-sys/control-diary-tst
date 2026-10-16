@@ -361,13 +361,11 @@ async function attachReportOrRollback(
 }
 
 // PostgREST caps each response (1000 rows by default), so list endpoints must page.
-async function fetchAllRows(
-  // deno-lint-ignore no-explicit-any
-  makeQuery: () => any,
+async function fetchAllRows<T>(
+  makeQuery: () => { range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }> },
   pageSize = 1000,
 ) {
-  // deno-lint-ignore no-explicit-any
-  const rows: any[] = [];
+  const rows: T[] = [];
   for (let from = 0;; from += pageSize) {
     const { data, error } = await makeQuery().range(from, from + pageSize - 1);
     if (error) return { data: null, error };
