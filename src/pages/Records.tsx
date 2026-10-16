@@ -72,6 +72,7 @@ export function Records({
   const [reportMessage, setReportMessage] = useState("");
   const [viewerReport, setViewerReport] = useState<ReportPayload | null>(null);
   const canAttachReport = user.role !== "financeiro";
+  const canExport = user.role !== "colaborador";
 
   function startAttach(recordId: string) {
     setAttachTarget(recordId);
@@ -123,12 +124,12 @@ export function Records({
   }, [endDate, query, records, shift, startDate, user]);
 
   async function exportExcel() {
-    if (!startDate || !endDate) {
-      setExportError("Informe a data inicial e a data final para exportar.");
+    if (startDate && endDate && startDate > endDate) {
+      setExportError("A data inicial nao pode ser posterior a data final.");
       return;
     }
-    if (startDate > endDate) {
-      setExportError("A data inicial nao pode ser posterior a data final.");
+    if (!filtered.length) {
+      setExportError("Nenhum registro encontrado para exportar com os filtros atuais.");
       return;
     }
     setExportError("");
@@ -171,7 +172,10 @@ export function Records({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `relatorio-tst-${startDate}-a-${endDate}.xlsx`;
+    const period = startDate || endDate
+      ? `${startDate || "inicio"}-a-${endDate || "fim"}`
+      : `todos-${localDate()}`;
+    link.download = `relatorio-tst-${period}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -184,13 +188,19 @@ export function Records({
           <h1>Registros de diárias</h1>
           <p>
             {user.role === "financeiro"
-              ? "Filtre o período necessário e exporte todas as atividades realizadas."
-              : "Consulte jornadas e solicite correções quando necessário."}
+              ? "Filtre o período necessário e exporte as atividades realizadas."
+              : canExport
+                ? "Consulte jornadas, solicite correções e exporte para Excel."
+                : "Consulte jornadas e solicite correções quando necessário."}
           </p>
         </div>
-        {user.role === "financeiro" && (
-          <button className="button button-primary" onClick={exportExcel}>
-            <Download size={18} /> Exportar Excel
+        {canExport && (
+          <button
+            className="button button-primary"
+            onClick={exportExcel}
+            title={startDate || endDate || shift || query ? "Exporta apenas os registros filtrados" : "Exporta todos os registros"}
+          >
+            <Download size={18} /> {startDate || endDate || shift || query ? "Exportar filtrados" : "Exportar tudo"}
           </button>
         )}
       </section>

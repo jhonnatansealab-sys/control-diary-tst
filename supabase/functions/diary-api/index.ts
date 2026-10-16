@@ -360,6 +360,23 @@ async function attachReportOrRollback(
   }
 }
 
+// PostgREST caps each response (1000 rows by default), so list endpoints must page.
+async function fetchAllRows(
+  // deno-lint-ignore no-explicit-any
+  makeQuery: () => any,
+  pageSize = 1000,
+) {
+  // deno-lint-ignore no-explicit-any
+  const rows: any[] = [];
+  for (let from = 0;; from += pageSize) {
+    const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+    if (error) return { data: null, error };
+    rows.push(...(data ?? []));
+    if (!data || data.length < pageSize) break;
+  }
+  return { data: rows, error: null };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -427,31 +444,43 @@ Deno.serve(async (request) => {
 
     if (request.method === "GET" && action === "state") {
       const session = await requireSession(request);
-      let recordsQuery = supabase
-        .from("app_diary_records")
-        .select("payload")
-        .order("work_date", { ascending: false })
-        .order("created_at", { ascending: false });
-      let requestsQuery = supabase
-        .from("app_edit_requests")
-        .select("payload")
-        .order("created_at", { ascending: false });
-      const scheduleQuery = supabase
-        .from("app_schedule_records")
-        .select("payload")
-        .order("scheduled_at", { ascending: true });
-      let reportsQuery = supabase
-        .from("app_diary_reports")
-        .select("record_id,file_name,mime_type,size,uploaded_at,uploaded_by");
+      const isCollaborator = session.role === "colaborador";
+      const recordsQuery = () => {
+        const query = supabase
+          .from("app_diary_records")
+          .select("payload")
+          .order("work_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .order("id");
+        return isCollaborator ? query.eq("technician", session.name) : query;
+      };
+      const requestsQuery = () => {
+        const query = supabase
+          .from("app_edit_requests")
+          .select("payload")
+          .order("created_at", { ascending: false })
+          .order("id");
+        return isCollaborator ? query.eq("technician", session.name) : query;
+      };
+      const scheduleQuery = () =>
+        supabase
+          .from("app_schedule_records")
+          .select("payload")
+          .order("scheduled_at", { ascending: true })
+          .order("id");
+      const reportsQuery = () => {
+        const query = supabase
+          .from("app_diary_reports")
+          .select("record_id,file_name,mime_type,size,uploaded_at,uploaded_by")
+          .order("record_id");
+        return isCollaborator ? query.eq("technician", session.name) : query;
+      };
       let reimbursementsQuery = supabase
         .from("app_reimbursement_requests")
         .select("payload")
         .order("created_at", { ascending: false });
-      if (session.role === "colaborador") {
-        recordsQuery = recordsQuery.eq("technician", session.name);
-        requestsQuery = requestsQuery.eq("technician", session.name);
+      if (isCollaborator) {
         reimbursementsQuery = reimbursementsQuery.eq("technician", session.name);
-        reportsQuery = reportsQuery.eq("technician", session.name);
       }
       const [
         { data: records, error: recordsError },
@@ -459,7 +488,13 @@ Deno.serve(async (request) => {
         { data: scheduleRecords, error: scheduleError },
         { data: reimbursements, error: reimbursementsError },
         { data: reports, error: reportsError },
-      ] = await Promise.all([recordsQuery, requestsQuery, scheduleQuery, reimbursementsQuery, reportsQuery]);
+      ] = await Promise.all([
+        fetchAllRows(recordsQuery),
+        fetchAllRows(requestsQuery),
+        fetchAllRows(scheduleQuery),
+        reimbursementsQuery,
+        fetchAllRows(reportsQuery),
+      ]);
       if (recordsError) throw recordsError;
       if (requestsError) throw requestsError;
       if (scheduleError) throw scheduleError;
