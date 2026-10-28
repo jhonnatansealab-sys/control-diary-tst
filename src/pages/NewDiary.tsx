@@ -9,7 +9,6 @@ import type { Activity, AuthUser, DiaryRecord, Shift, SystemSettings, TurnEntry 
 
 interface NewDiaryProps {
   user: AuthUser;
-  records: DiaryRecord[];
   settings: SystemSettings;
   onSave: (record: DiaryRecord, report?: ReportPayload) => Promise<string | null>;
   showPaymentWarning: boolean;
@@ -27,7 +26,6 @@ const emptyTurn: TurnEntry = { shift: "Diurno", activity: "Area", vessels: [] };
 
 export function NewDiary({
   user,
-  records,
   settings,
   onSave,
   showPaymentWarning,
@@ -52,13 +50,6 @@ export function NewDiary({
   const [report, setReport] = useState<ReportPayload | null>(null);
   const [viewingReport, setViewingReport] = useState(false);
   const [reportError, setReportError] = useState("");
-  const existingRecord = user.role === "colaborador"
-    ? records.find(
-        (record) =>
-          record.technician === user.name &&
-          record.date === date,
-      )
-    : undefined;
 
   function updateFirst(patch: Partial<TurnEntry>) {
     const next = { ...firstTurn, ...patch };
@@ -93,10 +84,6 @@ export function NewDiary({
     event.preventDefault();
     if (user.role === "colaborador" && date > today) {
       setError("Nao e permitido registrar diaria em uma data futura.");
-      return;
-    }
-    if (existingRecord) {
-      setError("Voce ja possui uma diaria registrada nesta data.");
       return;
     }
     if (!firstTurn.vessels.length || (hasDouble && !secondTurn.vessels.length)) {
@@ -282,14 +269,7 @@ export function NewDiary({
           {reportError && <div className="error-banner"><AlertCircle size={18} /> {reportError}</div>}
         </section>
 
-        {existingRecord && (
-          <div className="error-banner">
-            <AlertCircle size={18} />
-            Voce ja registrou uma diaria para esta data. Para corrigir dados, utilize
-            a opcao de solicitar edicao no historico.
-          </div>
-        )}
-        {error && !existingRecord && (
+        {error && (
           <div className="error-banner"><AlertCircle size={18} /> {error}</div>
         )}
 
@@ -300,7 +280,7 @@ export function NewDiary({
           <button
             type="submit"
             className="button button-primary"
-            disabled={saving || Boolean(existingRecord)}
+            disabled={saving}
           >
             <Save size={18} /> {saving ? "Salvando..." : "Salvar diaria"}
           </button>

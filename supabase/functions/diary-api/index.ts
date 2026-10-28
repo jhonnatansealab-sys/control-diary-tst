@@ -562,24 +562,6 @@ Deno.serve(async (request) => {
       if (session.role === "colaborador" && record.date > saoPauloDate()) {
         return json({ error: "Colaborador nao pode registrar diaria em data futura." }, 403);
       }
-      if (session.role === "colaborador") {
-        const { data: inserted, error } = await supabase.rpc(
-          "insert_collaborator_diary",
-          {
-            p_id: record.id,
-            p_work_date: record.date,
-            p_technician: record.technician,
-            p_payload: record,
-          },
-        );
-        if (error) throw error;
-        if (!inserted) {
-          return json({
-            error: "Ja existe uma diaria registrada para este colaborador nesta data.",
-          }, 409);
-        }
-        return json({ record, report: await attachReportOrRollback(record, reportInput, reportBytes, session.name) }, 201);
-      }
       const { error } = await supabase.from("app_diary_records").insert({
         id: record.id,
         work_date: record.date,
@@ -863,7 +845,7 @@ Deno.serve(async (request) => {
     }
 
     if (request.method === "DELETE" && action === "record") {
-      await requireSession(request, ["admin"]);
+      await requireSession(request, ["admin", "supervisor"]);
       const id = url.searchParams.get("id");
       if (!id) return json({ error: "Identificador do registro nao informado." }, 400);
       const { data, error } = await supabase

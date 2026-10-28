@@ -184,16 +184,6 @@ export default function App() {
   }
 
   async function addRecord(record: DiaryRecord, report?: ReportPayload): Promise<string | null> {
-    if (
-      user?.role === "colaborador" &&
-      records.some(
-        (existing) =>
-          existing.technician === record.technician &&
-          existing.date === record.date,
-      )
-    ) {
-      return "Voce ja possui uma diaria registrada nesta data.";
-    }
     let saved: DiaryRecord = record;
     if (!isDemoMode && user) {
       try {
@@ -272,7 +262,7 @@ export default function App() {
   }
 
   async function deleteRecord(id: string) {
-    if (!user || user.role !== "admin") return false;
+    if (!user || !["admin", "supervisor"].includes(user.role)) return false;
     if (!isDemoMode) {
       try {
         await deleteRemoteRecord(user, id);
@@ -480,7 +470,6 @@ export default function App() {
               : (
                 <NewDiary
                   user={user}
-                  records={records}
                   settings={settings}
                   onSave={addRecord}
                   showPaymentWarning={showPaymentWarning}

@@ -278,11 +278,13 @@ export function Records({
                         <FilePenLine size={18} /> Solicitar edição
                       </button>
                     )}
-                    {user.role === "admin" && (
+                    {(user.role === "admin" || user.role === "supervisor") && (
                       <div className="admin-record-actions">
-                        <button className="row-action" onClick={() => setAdminEditing(record)}>
-                          <Pencil size={16} /> Editar
-                        </button>
+                        {user.role === "admin" && (
+                          <button className="row-action" onClick={() => setAdminEditing(record)}>
+                            <Pencil size={16} /> Editar
+                          </button>
+                        )}
                         <button
                           className="row-action admin-delete-action"
                           onClick={() => setAdminDeleting(record)}
