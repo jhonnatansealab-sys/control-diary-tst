@@ -6,7 +6,7 @@ import {
   CheckCircle2,
   Clock,
   Eye,
-  FileSpreadsheet,
+  FileText,
   History,
   MapPin,
   MessageSquare,
@@ -148,10 +148,55 @@ function scheduleSnapshot(record: ScheduleRecord) {
   };
 }
 
-function formatContactsForExport(list: ScheduleContact[]) {
-  return list
-    .map((contact) => `${contact.name}${contact.inTraining ? " (Em treinamento)" : ""}${contact.contact ? ` - ${contact.contact}` : ""}`)
-    .join("; ") || "-";
+const SHIFT_DEFAULT_TIME: Record<"Diurno" | "Noturno", string> = { Diurno: "07:00", Noturno: "19:00" };
+
+function formatPerson(person: ScheduleContact) {
+  const name = person.name.trim().toLocaleUpperCase("pt-BR");
+  return person.contact ? `${name} ${person.contact}` : name;
+}
+
+function buildScheduleText(records: ScheduleRecord[]) {
+  const separator = "_".repeat(67);
+  const byDate = new Map<string, ScheduleRecord[]>();
+  records.forEach((record) => {
+    const day = record.scheduledAt.slice(0, 10);
+    byDate.set(day, [...(byDate.get(day) ?? []), record]);
+  });
+  const sections = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, dayRecords]) => {
+    const [year, month, date] = day.split("-");
+    const dateLabel = `${date}/${month}/${year}`;
+    const blocks = dayRecords
+      .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+      .map((record) => {
+        const lines = [`✅ ${record.vessel} (${record.serviceType}) - ${record.post} | ${record.region}`, ""];
+        (["Diurno", "Noturno"] as const).forEach((shift) => {
+          const tsts = shift === "Diurno" ? record.dayTsts : record.nightTsts;
+          if (!tsts.length) return;
+          const program = record.programs.find((item) => item.shift === shift);
+          const time = program?.timeRange.match(/\d{1,2}:\d{2}/)?.[0] ?? SHIFT_DEFAULT_TIME[shift];
+          lines.push(`${shift} - ${dateLabel} - ${time}`);
+          tsts.forEach((tst, index) => {
+            lines.push(`${index + 1} – TST Sealab – ${formatPerson(tst)}${tst.inTraining ? " (em treinamento)" : ""}`);
+          });
+          lines.push("");
+        });
+        if (record.cboSupports.length) {
+          record.cboSupports.forEach((support) => lines.push(`Suporte CBO: ${formatPerson(support)}`));
+        } else if (lines[lines.length - 1] === "") {
+          lines.pop();
+        }
+        lines.push(separator);
+        return lines.join("\n");
+      });
+    return [
+      "PROGRAMAÇÃO DE ATENDIMENTOS - TST TERCEIRIZADO SEALAB MEDICAL",
+      `📆${dateLabel}`,
+      "Guia informativo sobre os atendimentos por TST terceirizados agendados. Favor informar caso observado necessidades de ajustes e/ou correções",
+      "",
+      blocks.join("\n\n"),
+    ].join("\n");
+  });
+  return `${sections.join("\n\n\n")}\n`;
 }
 
 function listNames(list: ScheduleContact[]) {
@@ -261,7 +306,6 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [exporting, setExporting] = useState(false);
 
   const filteredRecords = useMemo(() => {
     const term = normalizeText(query.trim());
@@ -376,70 +420,17 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
     setDraft(emptyDraft(settings.vessels, settings.serviceRegions));
   }
 
-  async function exportSchedule() {
-    setExporting(true);
-    try {
-      const ExcelJS = await import("exceljs");
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = "Controle de Diarias TST";
-      workbook.created = new Date();
-
-      const sheet = workbook.addWorksheet("Atendimentos");
-      sheet.columns = [
-        { header: "OS", key: "os", width: 20 },
-        { header: "Embarcacao", key: "vessel", width: 24 },
-        { header: "Regiao", key: "region", width: 16 },
-        { header: "Posto", key: "post", width: 20 },
-        { header: "Tipo", key: "serviceType", width: 14 },
-        { header: "Status", key: "status", width: 16 },
-        { header: "DataHora", key: "scheduledAt", width: 20 },
-        { header: "Programacao", key: "programs", width: 32 },
-        { header: "TSTsDiurnos", key: "dayTsts", width: 44 },
-        { header: "TSTsNoturnos", key: "nightTsts", width: 44 },
-        { header: "SuporteCBO", key: "cboSupports", width: 44 },
-        { header: "CriadoPor", key: "createdBy", width: 24 },
-        { header: "CriadoEm", key: "createdAt", width: 20 },
-        { header: "Arquivado", key: "archived", width: 12 },
-      ];
-      sortedRecords.forEach((record) => sheet.addRow({
-        os: record.osNumber,
-        vessel: record.vessel,
-        region: record.region,
-        post: record.post,
-        serviceType: record.serviceType,
-        status: record.status,
-        scheduledAt: new Date(record.scheduledAt),
-        programs: record.programs.map((program) => `${program.shift}: ${program.timeRange}`).join(" / "),
-        dayTsts: formatContactsForExport(record.dayTsts),
-        nightTsts: formatContactsForExport(record.nightTsts),
-        cboSupports: formatContactsForExport(record.cboSupports),
-        createdBy: record.createdBy,
-        createdAt: new Date(record.createdAt),
-        archived: record.archived ? "Sim" : "Não",
-      }));
-
-      sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-      sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF3734B7" } };
-      sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: sheet.columnCount } };
-      sheet.views = [{ state: "frozen", ySplit: 1 }];
-      const dateTimeColumns = ["scheduledAt", "createdAt"];
-      sheet.columns.forEach((column) => {
-        if (column.key && dateTimeColumns.includes(column.key)) column.numFmt = "dd/mm/yyyy hh:mm";
-      });
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `controle-atendimento-${new Date().toISOString().slice(0, 10)}.xlsx`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } finally {
-      setExporting(false);
-    }
+  function exportSchedule() {
+    const exportable = filters.status === "Cancelado"
+      ? sortedRecords
+      : sortedRecords.filter((record) => record.status !== "Cancelado");
+    const blob = new Blob([buildScheduleText(exportable)], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `programacao-atendimentos-${new Date().toISOString().slice(0, 10)}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -455,8 +446,8 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
             {showArchived ? <ArchiveRestore size={18} /> : <Archive size={18} />}
             {showArchived ? "Ver ativos" : `Arquivados (${archivedCount})`}
           </button>
-          <button className="button button-secondary" type="button" disabled={exporting || !sortedRecords.length} onClick={exportSchedule}>
-            <FileSpreadsheet size={18} /> {exporting ? "Exportando..." : "Exportar"}
+          <button className="button button-secondary" type="button" disabled={!sortedRecords.length} onClick={exportSchedule}>
+            <FileText size={18} /> Exportar TXT
           </button>
           {canCreate && <button className="button button-primary" onClick={openNewSchedule}><Plus size={18} /> Novo Atendimento</button>}
         </div>
