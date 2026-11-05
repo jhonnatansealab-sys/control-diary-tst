@@ -1,6 +1,8 @@
 import type { ReportPayload } from "./reportFile";
 import type {
   AuthUser,
+  AvailabilityChoice,
+  AvailabilityEntry,
   DiaryRecord,
   DiaryReport,
   EditRequest,
@@ -143,6 +145,25 @@ export async function fetchRemoteReport(user: AuthUser, recordId: string) {
   const body = await response.json().catch(() => ({ error: "Falha ao carregar o relatório." }));
   if (!response.ok) throw new Error(body.error || "Falha ao carregar o relatório.");
   return body as { report: DiaryReport & { dataUrl: string } };
+}
+
+export async function fetchAvailability(user: AuthUser, month: string) {
+  if (!supabaseUrl || !supabasePublishableKey) throw new Error("Supabase nao configurado.");
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/diary-api?action=availability&month=${encodeURIComponent(month)}`,
+    { headers: { apikey: supabasePublishableKey, "x-app-session": user.sessionToken ?? "" } },
+  );
+  const body = await response.json().catch(() => ({ error: "Falha ao carregar a disponibilidade." }));
+  if (!response.ok) throw new Error(body.error || "Falha ao carregar a disponibilidade.");
+  return body as { entries: AvailabilityEntry[] };
+}
+
+export async function saveAvailability(user: AuthUser, date: string, choice: AvailabilityChoice | null) {
+  return request<{ ok: boolean }>(
+    "availability",
+    { method: "PUT", body: JSON.stringify({ date, choice }) },
+    user.sessionToken,
+  );
 }
 
 export async function createRemoteRequest(user: AuthUser, editRequest: EditRequest) {

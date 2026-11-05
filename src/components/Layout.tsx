@@ -1,6 +1,7 @@
 import {
   BarChart3,
   ClipboardList,
+  CalendarCheck,
   CalendarClock,
   FilePenLine,
   Gauge,
@@ -32,6 +33,7 @@ const baseNav = [
 ];
 const analyticsNav = { to: "/relatorios", label: "Metricas", icon: BarChart3 };
 const scheduleNav = { to: "/programacao", label: "Controle de Atendimento", icon: CalendarClock };
+const availabilityNav = { to: "/disponibilidade", label: "Disponibilidade", icon: CalendarCheck };
 const reimbursementNav = { to: "/reembolsos", label: "Reembolsos", icon: Receipt };
 
 function initials(name: string) {
@@ -48,8 +50,8 @@ export function Layout({ children, user, onLogout }: LayoutProps) {
         reimbursementNav,
       ]
     : user.role === "admin" || user.role === "supervisor"
-      ? [...baseNav, scheduleNav, reimbursementNav, analyticsNav, { to: "/administracao", label: "Administracao", icon: Settings }]
-      : [...baseNav, reimbursementNav];
+      ? [...baseNav, scheduleNav, availabilityNav, reimbursementNav, analyticsNav, { to: "/administracao", label: "Administracao", icon: Settings }]
+      : [...baseNav, availabilityNav, reimbursementNav];
 
   return (
     <div className="app-shell">

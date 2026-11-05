@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AvailabilityAlertModal } from "./components/AvailabilityAlertModal";
 import { Layout } from "./components/Layout";
 import {
   createRemoteRecord,
   createRemoteReimbursement,
   createRemoteRequest,
   createRemoteScheduleRecord,
+  fetchAvailability,
   fetchRemoteReport,
   uploadRemoteReport,
   deleteRemoteRecord,
@@ -37,6 +39,7 @@ import {
 import type { ReportPayload } from "./lib/reportFile";
 import { isDemoMode } from "./lib/supabase";
 import { Admin } from "./pages/Admin";
+import { Availability } from "./pages/Availability";
 import { Analytics } from "./pages/Analytics";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
@@ -92,6 +95,7 @@ export default function App() {
   const [reimbursements, setReimbursements] = useState<ReimbursementRequest[]>(isDemoMode ? loadReimbursements() : []);
   const [settings, setSettings] = useState(loadSettings);
   const [remoteError, setRemoteError] = useState("");
+  const [availabilityAlert, setAvailabilityAlert] = useState(false);
 
   useEffect(() => {
     if (isDemoMode) saveRecords(records);
@@ -137,6 +141,21 @@ export default function App() {
       });
   }, [user]);
 
+  useEffect(() => {
+    if (isDemoMode || user?.role !== "colaborador" || !user.sessionToken) return;
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    let cancelled = false;
+    fetchAvailability(user, month)
+      .then(({ entries }) => {
+        if (!cancelled) setAvailabilityAlert(entries.length === 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   function login(nextUser: AuthUser) {
     setUser(nextUser);
     setShowPaymentWarning(nextUser.role === "colaborador");
@@ -145,6 +164,7 @@ export default function App() {
 
   function logout() {
     setUser(null);
+    setAvailabilityAlert(false);
     setShowPaymentWarning(false);
     saveSession(null);
   }
@@ -459,6 +479,9 @@ export default function App() {
 
   return (
     <Layout user={user} onLogout={logout}>
+      {availabilityAlert && !showPaymentWarning && (
+        <AvailabilityAlertModal onClose={() => setAvailabilityAlert(false)} />
+      )}
       {remoteError && <div className="error-banner remote-error-banner">{remoteError}</div>}
       <Routes>
         <Route path="/" element={user.role === "financeiro" ? <Navigate to="/relatorios" replace /> : <Dashboard user={user} records={records} requests={requests} />} />
@@ -518,6 +541,14 @@ export default function App() {
                   onStatusChange={changeScheduleStatus}
                 />
               )
+              : <Navigate to="/" replace />
+          }
+        />
+        <Route
+          path="/disponibilidade"
+          element={
+            ["colaborador", "supervisor", "admin"].includes(user.role)
+              ? <Availability user={user} />
               : <Navigate to="/" replace />
           }
         />

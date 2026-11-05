@@ -59,6 +59,14 @@ export interface TurnEntry {
   vessels: string[];
 }
 
+export type AvailabilityChoice = "Diurno" | "Noturno" | "Ambos" | "Indisponivel";
+
+export interface AvailabilityEntry {
+  technician: string;
+  date: string;
+  choice: AvailabilityChoice;
+}
+
 export interface DiaryReport {
   fileName: string;
   mimeType: string;

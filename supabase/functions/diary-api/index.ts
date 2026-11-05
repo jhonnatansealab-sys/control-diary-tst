@@ -613,6 +613,63 @@ Deno.serve(async (request) => {
       return json({ request: editRequest });
     }
 
+    if (request.method === "GET" && action === "availability") {
+      const session = await requireSession(request, ["colaborador", "supervisor", "admin"]);
+      const month = url.searchParams.get("month") ?? "";
+      const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+      if (!match) return json({ error: "Mes invalido." }, 400);
+      const lastDay = new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate();
+      const { data, error } = await fetchAllRows(() => {
+        const query = supabase
+          .from("app_availability")
+          .select("technician,work_date,choice")
+          .gte("work_date", `${month}-01`)
+          .lte("work_date", `${month}-${String(lastDay).padStart(2, "0")}`)
+          .order("work_date")
+          .order("technician");
+        return session.role === "colaborador" ? query.eq("technician", session.name) : query;
+      });
+      if (error) throw error;
+      return json({
+        entries: (data ?? []).map((row) => ({
+          technician: row.technician,
+          date: row.work_date,
+          choice: row.choice,
+        })),
+      });
+    }
+
+    if (request.method === "PUT" && action === "availability") {
+      const session = await requireSession(request, ["colaborador"]);
+      const body = await readBody(request);
+      if (typeof body.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) || Number.isNaN(Date.parse(body.date))) {
+        return json({ error: "Data invalida." }, 400);
+      }
+      if (body.date < saoPauloDate()) {
+        return json({ error: "Nao e possivel alterar a disponibilidade de datas passadas." }, 400);
+      }
+      if (body.choice === null) {
+        const { error } = await supabase
+          .from("app_availability")
+          .delete()
+          .eq("technician", session.name)
+          .eq("work_date", body.date);
+        if (error) throw error;
+        return json({ ok: true });
+      }
+      if (!["Diurno", "Noturno", "Ambos", "Indisponivel"].includes(body.choice)) {
+        return json({ error: "Opcao de disponibilidade invalida." }, 400);
+      }
+      const { error } = await supabase.from("app_availability").upsert({
+        technician: session.name,
+        work_date: body.date,
+        choice: body.choice,
+        updated_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
     if (request.method === "POST" && action === "record-report") {
       const session = await requireSession(request, ["colaborador", "supervisor", "admin"]);
       const body = await readBody(request);
