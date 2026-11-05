@@ -738,3 +738,8 @@ td small { margin-top: 3px; color: #93a1a8; font-size: 9px; }
 .availability-alert-modal p { margin: 0 0 8px; color: #536b78; font-size: 12px; line-height: 1.6; }
 .availability-alert-icon { width: 62px; height: 62px; display: grid; place-items: center; border-radius: 50%; color: #3734b7; background: #ecebff; }
 .availability-alert-modal .form-actions { justify-content: center; }
+
+.sortable-header { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.sortable-header svg { opacity: .45; }
+.sortable-header:hover, .sortable-header.active { color: #3734b7; }
+.sortable-header:hover svg, .sortable-header.active svg { opacity: 1; }

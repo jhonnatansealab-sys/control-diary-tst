@@ -13,6 +13,9 @@ import {
   Pencil,
   Phone,
   Plus,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   Search,
   Ship,
   SlidersHorizontal,
@@ -56,6 +59,39 @@ type ScheduleFilters = {
 };
 
 const statuses: ScheduleStatus[] = ["Programado", "Em andamento", "Concluído", "Cancelado"];
+
+type SortKey = "status" | "osNumber" | "vessel" | "location" | "scheduledAt" | "serviceType" | "programs";
+type SortState = { key: SortKey; direction: "asc" | "desc" };
+
+const sortableColumns: { key: SortKey; label: string }[] = [
+  { key: "status", label: "Status" },
+  { key: "osNumber", label: "OS" },
+  { key: "vessel", label: "Embarcação" },
+  { key: "location", label: "Região / Posto" },
+  { key: "scheduledAt", label: "Data da solicitação" },
+  { key: "serviceType", label: "Tipo" },
+  { key: "programs", label: "Programação" },
+];
+
+function compareText(a: string, b: string) {
+  return a.localeCompare(b, "pt-BR", { numeric: true, sensitivity: "base" });
+}
+
+function compareRecords(a: ScheduleRecord, b: ScheduleRecord, key: SortKey) {
+  switch (key) {
+    case "status": return statuses.indexOf(a.status) - statuses.indexOf(b.status);
+    case "osNumber": return compareText(a.osNumber, b.osNumber);
+    case "vessel": return compareText(a.vessel, b.vessel);
+    case "location": return compareText(`${a.region} ${a.post}`, `${b.region} ${b.post}`);
+    case "scheduledAt": return a.scheduledAt.localeCompare(b.scheduledAt);
+    case "serviceType": return compareText(a.serviceType, b.serviceType);
+    case "programs":
+      return compareText(
+        a.programs.map((program) => `${program.shift} ${program.timeRange}`).join(" "),
+        b.programs.map((program) => `${program.shift} ${program.timeRange}`).join(" "),
+      );
+  }
+}
 const serviceTypes: ScheduleServiceType[] = ["Operacional", "DOC&CON", "Base"];
 
 function createClientId(prefix: string) {
@@ -335,10 +371,25 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
 
   const archivedCount = records.filter((record) => record.archived).length;
 
-  const sortedRecords = useMemo(
-    () => [...filteredRecords].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
-    [filteredRecords],
-  );
+  const [sort, setSort] = useState<SortState>({ key: "scheduledAt", direction: "desc" });
+
+  const sortedRecords = useMemo(() => {
+    const factor = sort.direction === "asc" ? 1 : -1;
+    return [...filteredRecords].sort(
+      (a, b) =>
+        factor * compareRecords(a, b, sort.key) ||
+        b.scheduledAt.localeCompare(a.scheduledAt) ||
+        a.id.localeCompare(b.id),
+    );
+  }, [filteredRecords, sort]);
+
+  function toggleSort(key: SortKey) {
+    setSort((current) => (
+      current.key === key
+        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: key === "scheduledAt" ? "desc" : "asc" }
+    ));
+  }
 
   function openNewSchedule() {
     setDraft(emptyDraft(settings.vessels, settings.serviceRegions));
@@ -474,13 +525,24 @@ export function Schedule({ user, settings, records, onCreate, onUpdate, onArchiv
           <table className="schedule-table">
             <thead>
               <tr>
-                <th>Status</th>
-                <th>OS</th>
-                <th>Embarcação</th>
-                <th>Região / Posto</th>
-                <th>Data da solicitação</th>
-                <th>Tipo</th>
-                <th>Programação</th>
+                {sortableColumns.map((column) => (
+                  <th
+                    key={column.key}
+                    aria-sort={sort.key === column.key ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+                  >
+                    <button
+                      type="button"
+                      className={`sortable-header ${sort.key === column.key ? "active" : ""}`}
+                      onClick={() => toggleSort(column.key)}
+                      title={`Ordenar por ${column.label}`}
+                    >
+                      {column.label}
+                      {sort.key === column.key
+                        ? (sort.direction === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)
+                        : <ChevronsUpDown size={12} />}
+                    </button>
+                  </th>
+                ))}
                 <th>Ações</th>
               </tr>
             </thead>
